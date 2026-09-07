@@ -1594,6 +1594,73 @@ function initSeriesCard(badgeEl) {
   });
 }
 
+/* ---- Re-Watch nested series card fill: the per-month episode cards inside
+   .ttlr_prev-episodes_wrap (e.g. "Test Month 1 - Series 1") use the
+   "previous-content" card variant, which has NO badge/data-series-id
+   element at all (confirmed via a live HTML dump 2026-09-08) — unlike the
+   home-page cards initSeriesCard handles above. That's why watching
+   episodes there never moved anything here: nothing was watching these
+   cards at all. Deliberately kept fully separate from initSeriesCard (a
+   badge-INDEPENDENT version of this was attempted once before and broke
+   the badge+fill for every card, home-page included, for a reason that was
+   never diagnosed — this only ever touches .ttlr_series_card-inner on
+   cards found inside .ttlr_prev-episodes_wrap specifically, and only ones
+   that don't already have their own badge, so it can't ever run against
+   the same element initSeriesCard does). Series id is derived from the
+   card's own href (/serie/<slug>), same technique already proven safe in
+   the read-only "prev-content month badge" feature below. ---- */
+
+ttlrReady('prev-content series card fill', function () {
+  const cards = Array.from(document.querySelectorAll('.ttlr_prev-episodes_wrap .ttlr_series_card-wrap'))
+    .filter((card) => !card.querySelector('.ttlr_badge[data-series-id]'));
+  console.log('[ttlr] prev-content series card fill: found ' + cards.length + ' badge-less card(s) inside .ttlr_prev-episodes_wrap');
+  cards.forEach(initPrevContentSeriesCardFill);
+});
+
+function initPrevContentSeriesCardFill(cardEl) {
+  const PROGRESS_FIELD = 'ttl-progress';
+  const PROGRESS_LOCAL_KEY = 'ttlr-progress-local';
+
+  let seriesId = null;
+  try {
+    const path = new URL(cardEl.href, window.location.origin).pathname;
+    seriesId = path.match(/\/serie\/([^/]+)/)?.[1] || null;
+  } catch (err) {
+    console.error('[ttlr] prev-content series card fill: failed to derive seriesId from href', cardEl.href, err);
+  }
+  const fillEl = cardEl.querySelector('.ttlr_series_card-inner');
+  console.log('[ttlr] prev-content series card fill: seriesId', seriesId, '/ fill el', fillEl, '/ card', cardEl);
+  if (!seriesId || !fillEl) return;
+
+  function render(seriesProgress) {
+    const entry = seriesProgress?.[seriesId];
+    if (!entry || !entry.total) return;
+    fillEl.style.width = `${Math.min(100, (entry.completedCount / entry.total) * 100)}%`;
+  }
+
+  let local = {};
+  try {
+    local = JSON.parse(window.localStorage.getItem(PROGRESS_LOCAL_KEY)) || {};
+  } catch (err) {
+    console.error('[ttlr] prev-content series card fill: failed to read local progress cache', err);
+  }
+  render(local.series);
+
+  waitForMemberstack().then(async (ms) => {
+    if (!ms) return;
+    try {
+      const { data: member } = await ms.getCurrentMember();
+      if (!member) return;
+      const raw = member.customFields?.[PROGRESS_FIELD];
+      if (!raw) return;
+      const remote = JSON.parse(raw);
+      render(remote.series);
+    } catch (err) {
+      console.error('[ttlr] prev-content series card fill: failed to read remote progress', err);
+    }
+  });
+}
+
 /* ---- Series count label: #series-number shows how many series are in the
    CMS-bound list — content data (how many Series items exist here), not
    member progress, so this is independent of ttl-progress/localStorage.
