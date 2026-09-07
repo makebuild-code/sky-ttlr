@@ -1519,6 +1519,15 @@ function initSeriesSwiper(root) {
   new Swiper(root, {
     slidesPerView: 3,
     spaceBetween: 20,
+    // Tablet shows 1.5 slides (a deliberate "peek" of the next one) —
+    // breakpoint keys match Webflow's own standard breakpoints (tablet is
+    // 768–991px; already visible elsewhere on this page's own media
+    // queries). 992px+ reverts to the base 3-up desktop view; anything
+    // below 768px (mobile) is untouched, still the base slidesPerView.
+    breakpoints: {
+      768: { slidesPerView: 1.5 },
+      992: { slidesPerView: 3 },
+    },
     navigation: (nextEl || prevEl) ? { nextEl, prevEl } : undefined,
   });
 }
