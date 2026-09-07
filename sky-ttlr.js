@@ -1929,12 +1929,19 @@ ttlrReady('hero cta', function () {
     const number = card.querySelectorAll('.series-number_wrap > div')[1]?.textContent.trim() || '';
     seriesInfo.set(seriesId, { href: card.href, number });
   });
+  console.log('[ttlr] hero cta: seriesInfo keys (from each hero card\'s data-series-id) ->', Array.from(seriesInfo.keys()));
 
   function render(seriesProgress) {
+    // Logged in full so a mismatch between a hero card's data-series-id and
+    // whatever key the episode page actually wrote progress under (e.g. a
+    // slug/casing difference) is visible directly, instead of just silently
+    // falling through to "Let's get started" with no way to tell why.
+    console.log('[ttlr] hero cta: render() called with seriesProgress ->', seriesProgress, '/ known series ids ->', Array.from(seriesInfo.keys()));
     let resumeSeriesId = null;
     let resumeEntry = null;
     for (const [seriesId] of seriesInfo) {
       const entry = seriesProgress?.[seriesId];
+      console.log('[ttlr] hero cta: checking seriesId', JSON.stringify(seriesId), '-> progress entry', entry);
       if (entry && entry.completedCount > 0 && !entry.completed) {
         resumeSeriesId = seriesId;
         resumeEntry = entry;
