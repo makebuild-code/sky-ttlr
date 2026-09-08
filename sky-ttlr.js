@@ -285,8 +285,17 @@ function initEpisodeRouter(listEl) {
       // never touches the gradient itself (background-image, position, size,
       // etc. are entirely Designer's). Confirmed intent: one continuous
       // gradient revealed proportionally, cut into pill segments purely by
-      // the mask below — not a per-segment/panned color.
-      progressFill.style.clipPath = `inset(0 ${100 - percent}% 0 0)`;
+      // the mask below — not a per-segment/panned color. `round 999px`
+      // rounds the fill's own leading/trailing corners into a pill cap —
+      // 999px is a common trick for "fully rounded regardless of height"
+      // (clip-path's round value auto-clamps to half the box's own
+      // height, so this doesn't need to match the real bar height
+      // exactly). The mask below can't do the same for the gaps BETWEEN
+      // segments — mask-image linear-gradient has no rounding syntax, so
+      // those internal cuts stay sharp; only the fill's own two end caps
+      // (start of the bar, and wherever the current progress cuts off)
+      // can be rounded this way.
+      progressFill.style.clipPath = `inset(0 ${100 - percent}% 0 0 round 999px)`;
 
       // Brief pulse on a genuine increase only (not on the initial paint, and
       // not on every re-render) — see .is-updated in sky-ttlr.css. Uses
