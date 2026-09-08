@@ -1520,15 +1520,25 @@ function initSeriesSwiper(root) {
   // Head, outside this repo) plus a small override in sky-ttlr.css keeping
   // .swiper-button-prev/-next on Designer's own layout instead of Swiper's
   // default absolute-positioned arrow glyphs.
+  // Hero carousel only: 'auto' sizes each slide from its own CSS width
+  // instead of splitting evenly into a fixed count — paired with the
+  // aspect-ratio: 16/9 rule on .ttlr_hero_series-wrap .ttlr_cms_series-item
+  // in sky-ttlr.css, so each card's width is DERIVED from its height
+  // rather than the other way around, keeping it genuinely 16:9 regardless
+  // of viewport width. 'auto' mode naturally shows fewer cards on a
+  // narrower viewport on its own, so no separate tablet breakpoint is
+  // needed here (unlike the fixed-count carousels below).
   new Swiper(root, {
-    slidesPerView: 3,
+    slidesPerView: isHeroSeries ? 'auto' : 3,
     spaceBetween: 20,
-    // Tablet shows 1.5 slides (a deliberate "peek" of the next one) —
-    // breakpoint keys match Webflow's own standard breakpoints (tablet is
-    // 768–991px; already visible elsewhere on this page's own media
-    // queries). 992px+ reverts to the base 3-up desktop view; anything
-    // below 768px (mobile) is untouched, still the base slidesPerView.
-    breakpoints: {
+    // Tablet shows 1.5 slides on the fixed-count carousels (a deliberate
+    // "peek" of the next one) — breakpoint keys match Webflow's own
+    // standard breakpoints (tablet is 768–991px; already visible elsewhere
+    // on this page's own media queries). 992px+ reverts to the base 3-up
+    // desktop view; anything below 768px (mobile) is untouched, still the
+    // base slidesPerView. Not applied to the hero carousel — 'auto' mode
+    // already adapts on its own.
+    breakpoints: isHeroSeries ? undefined : {
       768: { slidesPerView: 1.5 },
       992: { slidesPerView: 3 },
     },
