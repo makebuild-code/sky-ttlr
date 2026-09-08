@@ -715,10 +715,14 @@ function initEpisodeRouter(listEl) {
     const nextBtn = current.querySelector('.ttlr_episode_button.is-next');
 
     if (prevBtn) {
+      // On episode 1 there's nothing to go back to at all — hidden
+      // entirely (not just dimmed/disabled) rather than showing "Back to:
+      // EP1" in a disabled state with nowhere real to go.
       const disablePrev = index === 0;
       prevBtn.disabled = disablePrev;
       prevBtn.classList.toggle('is-disabled', disablePrev);
       prevBtn.setAttribute('aria-disabled', String(disablePrev));
+      prevBtn.style.display = disablePrev ? 'none' : '';
     }
 
     if (nextBtn) {
@@ -1918,39 +1922,43 @@ ttlrReady('prev-content cards', function () {
   }
 
   let openPanel = null; // { panel, originalParent, originalNextSibling, slot }
-  // Bumped on every openMonth() call — lets a still-pending close→open
-  // sequence recognize it's been superseded by an even newer click (e.g.
-  // the user clicked a third month before the second's close finished
-  // playing) and skip its own open step instead of fighting the newer one.
+  // Bumped on every openMonth() call — lets a still-in-flight switch
+  // recognize it's been superseded by an even newer click (e.g. the user
+  // clicked a third month before the second's fade even finished) and skip
+  // its own "show" step instead of fighting the newer one.
   let openSeq = 0;
 
-  // Kept in sync with .ttlr_prev-content_slot's own height transition
-  // (0.6s in sky-ttlr.css) — a bit longer than it so the collapse animation
-  // actually finishes playing before the panel gets yanked back to its
-  // original slide position. Removing '.is-open' starts that CSS transition
-  // immediately; only the DOM move itself (which would otherwise cut the
-  // animation off mid-flight) is delayed. onDone (if given) fires only
-  // once the close has actually finished — that's what lets openMonth wait
-  // for the outgoing panel to fully close before the incoming one opens,
-  // instead of both animating at the same time.
+  // Content-only fade (opacity) used when SWITCHING between two already-
+  // open months — the slot itself stays at its full expanded height the
+  // whole time, only the card content underneath fades out/in. Driven
+  // entirely from JS inline styles (not a CSS class) so this doesn't
+  // depend on any particular class the Designer-authored .is-open height
+  // transition uses.
+  const CONTENT_FADE_MS = 300;
+  // The slot's OWN height transition (0.6s in sky-ttlr.css) — only ever
+  // triggered on a genuine first-open (nothing was open before) or a
+  // genuine final close (nothing left open after), never mid-switch. A bit
+  // of buffer after the CSS transition before the panel is actually moved
+  // back to its original slide position, so the collapse finishes playing
+  // first.
   const CLOSE_ANIMATION_MS = 600;
 
-  function closeOpenPanel(onDone) {
-    if (!openPanel) {
-      if (onDone) onDone();
-      return;
-    }
-    const { panel, originalParent, originalNextSibling, slot } = openPanel;
-    const seqAtCloseStart = openSeq;
-    slot.classList.remove('is-open');
-    openPanel = null;
-    window.setTimeout(() => {
-      originalParent.insertBefore(panel, originalNextSibling);
-      // Only proceed to open the new one if nothing even newer has been
-      // requested in the meantime — that newer click's own sequence
-      // already supersedes this one.
-      if (onDone && seqAtCloseStart === openSeq) onDone();
-    }, CLOSE_ANIMATION_MS);
+  function fadeOut(panel, onDone) {
+    panel.style.transition = `opacity ${CONTENT_FADE_MS}ms ease`;
+    panel.style.opacity = '0';
+    window.setTimeout(onDone, CONTENT_FADE_MS);
+  }
+
+  function fadeIn(panel) {
+    panel.style.opacity = '0';
+    void panel.offsetWidth; // force a reflow so the fade-in actually animates from 0
+    panel.style.transition = `opacity ${CONTENT_FADE_MS}ms ease`;
+    panel.style.opacity = '1';
+  }
+
+  function clearFadeStyles(panel) {
+    panel.style.opacity = '';
+    panel.style.transition = '';
   }
 
   function openMonth(monthItem) {
@@ -1959,29 +1967,56 @@ ttlrReady('prev-content cards', function () {
     console.log('[ttlr] prev-content cards: openMonth', monthItem, '/ panel found', !!panel, '/ slot found', !!slot);
     if (!panel || !slot) return;
 
-    openSeq++; // this request supersedes anything still pending from a previous one
+    openSeq++;
+    const seq = openSeq;
 
     document.querySelectorAll('.ttlr_cms_month-item.is-open').forEach((item) => {
       if (item !== monthItem) item.classList.remove('is-open');
     });
     monthItem.classList.add('is-open'); // still drives the card's own highlight styling
 
-    // Close whichever OTHER month's panel was open first, and only start
-    // opening THIS one once that close animation has actually finished
-    // playing (or immediately, if nothing was open) — a smooth sequential
-    // close-then-open, never both at once.
-    closeOpenPanel(() => {
+    function showNewPanel() {
+      if (seq !== openSeq) return; // superseded by an even newer click meanwhile
       openPanel = { panel, originalParent: monthItem, originalNextSibling: panel.nextSibling, slot };
+      slot.classList.add('is-open'); // expands the slot itself — a no-op if it's already expanded
       slot.appendChild(panel);
-      void slot.offsetWidth; // force a reflow so the height transition animates from 0, not a no-op
-      slot.classList.add('is-open');
+      fadeIn(panel);
       console.log('[ttlr] prev-content cards: panel relocated into slot', panel, '->', slot);
+    }
+
+    if (!openPanel) {
+      showNewPanel(); // nothing was open — slot expands + content fades in together
+      return;
+    }
+
+    // Something else is already open: fade its content out and restore it
+    // to its original slide position, WITHOUT touching the slot's own
+    // height/'.is-open' at all, then fade the new one in — the slot stays
+    // at full height the entire time; only the content underneath swaps.
+    const old = openPanel;
+    openPanel = null;
+    fadeOut(old.panel, () => {
+      old.originalParent.insertBefore(old.panel, old.originalNextSibling);
+      clearFadeStyles(old.panel);
+      showNewPanel();
     });
   }
 
   function closeMonth(monthItem) {
     monthItem.classList.remove('is-open');
-    closeOpenPanel();
+    if (!openPanel) return;
+    const { panel, originalParent, originalNextSibling, slot } = openPanel;
+    openPanel = null;
+    // Genuine final close (nothing opening after this one) — fade the
+    // content out first, THEN collapse the slot's own height, so the box
+    // doesn't visibly shrink around still-visible content.
+    fadeOut(panel, () => {
+      slot.classList.remove('is-open');
+      window.setTimeout(() => {
+        originalParent.insertBefore(panel, originalNextSibling);
+        clearFadeStyles(panel);
+      }, CLOSE_ANIMATION_MS);
+    });
   }
 
   cards.forEach((card) => {
