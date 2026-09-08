@@ -185,6 +185,20 @@ html.ttlr-is-resizing * {
   background-image: linear-gradient(90deg, #FF8C00 5.03%, #F80032 25.04%, #FF00A0 45.04%, #8C28FF 65.06%, #0023FF 82.04%, #19A0FF 96.05%), linear-gradient(90deg, #FF6400 11.81%, #FF0A50 50.11%, #FF00A5 88.92%);
 }
 
+/* Hero carousel only: initSeriesSwiper runs this one in Swiper's
+   slidesPerView: 'auto' (sizes each slide from its own CSS width, not an
+   even split into a fixed count) — pinning width to `auto` and deriving it
+   from height via aspect-ratio keeps every card genuinely 16:9 regardless
+   of viewport width, instead of being stretched/squashed to fit a fixed
+   count. Assumes .ttlr_hero_series-wrap (or an ancestor of it) already
+   gives this carousel a definite height — if cards render at 0 width,
+   that's the first thing to check. */
+.ttlr_hero_series-wrap .ttlr_cms_series-item {
+  height: 100%;
+  width: auto;
+  aspect-ratio: 16 / 9;
+}
+
 .ttlr_prev-content_slot {
   position: static !important;
 }
