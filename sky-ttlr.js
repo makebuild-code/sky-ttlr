@@ -1919,11 +1919,21 @@ ttlrReady('prev-content cards', function () {
 
   let openPanel = null; // { panel, originalParent, originalNextSibling, slot }
 
+  // Kept in sync with .ttlr_prev-content_slot's own height transition
+  // (0.4s in sky-ttlr.css) — a bit longer than it so the collapse animation
+  // actually finishes playing before the panel gets yanked back to its
+  // original slide position. Removing '.is-open' starts that CSS transition
+  // immediately; only the DOM move itself (which would otherwise cut the
+  // animation off mid-flight) is delayed.
+  const CLOSE_ANIMATION_MS = 600;
+
   function closeOpenPanel() {
     if (!openPanel) return;
     const { panel, originalParent, originalNextSibling, slot } = openPanel;
     slot.classList.remove('is-open');
-    originalParent.insertBefore(panel, originalNextSibling);
+    window.setTimeout(() => {
+      originalParent.insertBefore(panel, originalNextSibling);
+    }, CLOSE_ANIMATION_MS);
     openPanel = null;
   }
 
