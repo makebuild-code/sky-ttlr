@@ -1918,23 +1918,39 @@ ttlrReady('prev-content cards', function () {
   }
 
   let openPanel = null; // { panel, originalParent, originalNextSibling, slot }
+  // Bumped on every openMonth() call — lets a still-pending close→open
+  // sequence recognize it's been superseded by an even newer click (e.g.
+  // the user clicked a third month before the second's close finished
+  // playing) and skip its own open step instead of fighting the newer one.
+  let openSeq = 0;
 
   // Kept in sync with .ttlr_prev-content_slot's own height transition
-  // (0.4s in sky-ttlr.css) — a bit longer than it so the collapse animation
+  // (0.6s in sky-ttlr.css) — a bit longer than it so the collapse animation
   // actually finishes playing before the panel gets yanked back to its
   // original slide position. Removing '.is-open' starts that CSS transition
   // immediately; only the DOM move itself (which would otherwise cut the
-  // animation off mid-flight) is delayed.
+  // animation off mid-flight) is delayed. onDone (if given) fires only
+  // once the close has actually finished — that's what lets openMonth wait
+  // for the outgoing panel to fully close before the incoming one opens,
+  // instead of both animating at the same time.
   const CLOSE_ANIMATION_MS = 600;
 
-  function closeOpenPanel() {
-    if (!openPanel) return;
+  function closeOpenPanel(onDone) {
+    if (!openPanel) {
+      if (onDone) onDone();
+      return;
+    }
     const { panel, originalParent, originalNextSibling, slot } = openPanel;
+    const seqAtCloseStart = openSeq;
     slot.classList.remove('is-open');
+    openPanel = null;
     window.setTimeout(() => {
       originalParent.insertBefore(panel, originalNextSibling);
+      // Only proceed to open the new one if nothing even newer has been
+      // requested in the meantime — that newer click's own sequence
+      // already supersedes this one.
+      if (onDone && seqAtCloseStart === openSeq) onDone();
     }, CLOSE_ANIMATION_MS);
-    openPanel = null;
   }
 
   function openMonth(monthItem) {
@@ -1943,17 +1959,24 @@ ttlrReady('prev-content cards', function () {
     console.log('[ttlr] prev-content cards: openMonth', monthItem, '/ panel found', !!panel, '/ slot found', !!slot);
     if (!panel || !slot) return;
 
-    closeOpenPanel(); // restore whichever OTHER month's panel was open first
+    openSeq++; // this request supersedes anything still pending from a previous one
+
     document.querySelectorAll('.ttlr_cms_month-item.is-open').forEach((item) => {
       if (item !== monthItem) item.classList.remove('is-open');
     });
     monthItem.classList.add('is-open'); // still drives the card's own highlight styling
 
-    openPanel = { panel, originalParent: monthItem, originalNextSibling: panel.nextSibling, slot };
-    slot.appendChild(panel);
-    void slot.offsetWidth; // force a reflow so the height transition animates from 0, not a no-op
-    slot.classList.add('is-open');
-    console.log('[ttlr] prev-content cards: panel relocated into slot', panel, '->', slot);
+    // Close whichever OTHER month's panel was open first, and only start
+    // opening THIS one once that close animation has actually finished
+    // playing (or immediately, if nothing was open) — a smooth sequential
+    // close-then-open, never both at once.
+    closeOpenPanel(() => {
+      openPanel = { panel, originalParent: monthItem, originalNextSibling: panel.nextSibling, slot };
+      slot.appendChild(panel);
+      void slot.offsetWidth; // force a reflow so the height transition animates from 0, not a no-op
+      slot.classList.add('is-open');
+      console.log('[ttlr] prev-content cards: panel relocated into slot', panel, '->', slot);
+    });
   }
 
   function closeMonth(monthItem) {
