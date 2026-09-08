@@ -192,7 +192,7 @@ html.ttlr-is-resizing * {
 .ttlr_prev-content_slot .ttlr_prev-episodes_wrap {
   height: 0;
   overflow: hidden;
-  transition: height 0.4s ease;
+  transition: height 0.8s ease;
 }
 
 .ttlr_prev-content_slot.is-open .ttlr_prev-episodes_wrap {
