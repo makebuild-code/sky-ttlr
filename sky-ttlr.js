@@ -416,11 +416,17 @@ function initEpisodeRouter(listEl) {
   const seriesEndSuccessEl = document.querySelector('.ttlr_series-end_success');
   const completedEpisodeWrapEl = document.querySelector('.ttlr_completed_episode_wrap');
   const seriesSecondsEl = document.querySelector('[data-series-element="seconds"]');
+  // Holds BOTH the "Up Next in X seconds:" countdown+button and the next-
+  // series thumbnail card — hidden entirely (see startSeriesEndCountdown)
+  // when there's no next series to advance to, since neither piece means
+  // anything without one (the button would just sit there disabled, the
+  // thumbnail would show a blank placeholder image).
+  const completedEpisodeBottomEl = document.querySelector('.ttlr_completed_episode_bottom');
   // The whole section wrapping the episode viewer (cards, menu row, etc.) —
   // hidden alongside the episode item itself so the success screen truly
   // fills the whole screen, not just the space the episode item occupied.
   const episodeCardsSectionEl = document.querySelector('.ttlr_episode_cards_section');
-  console.log('[ttlr] series-end: .ttlr_series-end_success', seriesEndSuccessEl, '/ .ttlr_completed_episode_wrap', completedEpisodeWrapEl, '/ [data-series-element="seconds"]', seriesSecondsEl, '/ .ttlr_episode_cards_section', episodeCardsSectionEl);
+  console.log('[ttlr] series-end: .ttlr_series-end_success', seriesEndSuccessEl, '/ .ttlr_completed_episode_wrap', completedEpisodeWrapEl, '/ [data-series-element="seconds"]', seriesSecondsEl, '/ .ttlr_completed_episode_bottom', completedEpisodeBottomEl, '/ .ttlr_episode_cards_section', episodeCardsSectionEl);
 
   // Force a clean closed state on load, regardless of whether the static
   // Designer markup happens to already have .is-active on either element
@@ -472,6 +478,23 @@ function initEpisodeRouter(listEl) {
   // re-shown) — always clears any previous countdown before starting a new one.
   let seriesEndCountdownInterval = null;
   function startSeriesEndCountdown() {
+    // No next series to advance to at all — initSeriesNav (elsewhere in
+    // this file) already marks [data-series-nav="next-btn"] .is-disabled
+    // in that case, so this doesn't need its own separate "is there a next
+    // series" lookup. Hide the whole "Up Next in X seconds" + thumbnail
+    // block rather than running a countdown that has nothing to click at
+    // the end, or showing a disabled button next to a blank thumbnail.
+    const nextBtn = document.querySelector('[data-series-nav="next-btn"]');
+    if (!nextBtn || nextBtn.classList.contains('is-disabled')) {
+      console.log('[ttlr] series-end: no next series available — hiding .ttlr_completed_episode_bottom instead of starting a countdown with nothing to advance to');
+      if (completedEpisodeBottomEl) completedEpisodeBottomEl.style.display = 'none';
+      return;
+    }
+    // Series completed earlier in the same page view might have hidden
+    // this — a genuine next series exists this time, so make sure it's
+    // showing again.
+    if (completedEpisodeBottomEl) completedEpisodeBottomEl.style.display = '';
+
     if (!seriesSecondsEl) {
       console.warn('[ttlr] series-end: [data-series-element="seconds"] not found — countdown cannot run (it will keep showing whatever static text is baked into the Designer markup).');
       return;
