@@ -334,7 +334,25 @@ function initEpisodeRouter(listEl) {
       return;
     }
 
-    const stops = [];
+    // A linear-gradient mask (the previous approach) can only produce hard
+    // cuts — there's no gradient syntax for rounding an internal edge. An
+    // SVG mask can: each segment becomes a <rect> with its own rx/ry, so
+    // the gaps BETWEEN segments get real rounded corners too (not just the
+    // fill's own leading/trailing edge, which clip-path's own `round`
+    // already handles in updateProgressDisplay above).
+    //
+    // viewBox is 0–100 on both axes (percent of the fill's own width/
+    // height) with preserveAspectRatio="none" so it stretches to exactly
+    // match the fill's actual box — but that non-uniform stretch means a
+    // radius that's "50" in Y-percent (always exactly half the height,
+    // fully rounding vertically) needs a DIFFERENT X-percent to represent
+    // that same real-world pixel radius horizontally. radiusXPct converts
+    // "half the fill's real height, in pixels" into "percent of the fill's
+    // real width" — without this, the caps would render as flattened
+    // ellipses instead of true semicircles once stretched.
+    const radiusXPct = fillRect.height ? (fillRect.height / 2 / fillRect.width) * 100 : 0;
+
+    const rects = [];
     let cursor = 0;
     segmentEls
       .map((seg) => seg.getBoundingClientRect())
@@ -343,15 +361,19 @@ function initEpisodeRouter(listEl) {
         const startPct = Math.max(0, ((segRect.left - fillRect.left) / fillRect.width) * 100);
         const endPct = Math.min(100, ((segRect.right - fillRect.left) / fillRect.width) * 100);
         if (endPct <= cursor) return; // overlapping/degenerate — skip
-        stops.push(`transparent ${cursor}%`, `transparent ${startPct}%`, `black ${startPct}%`, `black ${endPct}%`);
+        rects.push(`<rect x="${startPct}" y="0" width="${endPct - startPct}" height="100" rx="${radiusXPct}" ry="50" fill="black" />`);
         cursor = endPct;
       });
-    stops.push(`transparent ${cursor}%`, `transparent 100%`);
 
-    const gradient = `linear-gradient(to right, ${stops.join(', ')})`;
-    progressFill.style.maskImage = gradient;
-    progressFill.style.webkitMaskImage = gradient;
-    console.log('[ttlr] updateProgressMask: applied mask-image', gradient);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none">${rects.join('')}</svg>`;
+    const maskUrl = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+    progressFill.style.maskImage = maskUrl;
+    progressFill.style.webkitMaskImage = maskUrl;
+    progressFill.style.maskSize = '100% 100%';
+    progressFill.style.webkitMaskSize = '100% 100%';
+    progressFill.style.maskRepeat = 'no-repeat';
+    progressFill.style.webkitMaskRepeat = 'no-repeat';
+    console.log('[ttlr] updateProgressMask: applied SVG mask-image with ' + rects.length + ' rounded segment(s)', svg);
   }
 
   if (progressFill) {
