@@ -2026,17 +2026,19 @@ ttlrReady('prev-content cards', function () {
   const CONTENT_FADE_MS = 180;
   // The slot's OWN height transition — keep in sync with the
   // `.ttlr_prev-content_slot .ttlr_prev-episodes_wrap` transition duration
-  // in sky-ttlr.css (450ms). Only ever triggered on a genuine first-open
+  // in sky-ttlr.css (200ms). Only ever triggered on a genuine first-open
   // (nothing was open before) or a genuine final close (nothing left open
   // after), never mid-switch. This is exactly that CSS duration, not extra
   // buffer on top of it — the panel is moved back to its original slide the
-  // instant the collapse finishes, not noticeably before or after.
-  const CLOSE_ANIMATION_MS = 450;
+  // instant the collapse finishes, not noticeably before or after. Kept
+  // short/close to CONTENT_FADE_MS specifically so opening doesn't feel
+  // slower than closing (see the CSS comment for the full reasoning).
+  const CLOSE_ANIMATION_MS = 200;
   // How long the slot's own height transition (see CLOSE_ANIMATION_MS
   // above) takes to fully expand on a first open — used to delay the
   // auto-scroll below until the slot has actually reached its final
   // height, not just started growing.
-  const SLOT_EXPAND_MS = 450;
+  const SLOT_EXPAND_MS = 200;
 
   function fadeOut(panel, onDone) {
     panel.style.transition = `opacity ${CONTENT_FADE_MS}ms ease`;
