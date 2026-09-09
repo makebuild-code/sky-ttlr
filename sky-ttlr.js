@@ -1998,14 +1998,20 @@ ttlrReady('prev-content cards', function () {
   // entirely from JS inline styles (not a CSS class) so this doesn't
   // depend on any particular class the Designer-authored .is-open height
   // transition uses.
-  const CONTENT_FADE_MS = 300;
-  // The slot's OWN height transition (0.6s in sky-ttlr.css) — only ever
-  // triggered on a genuine first-open (nothing was open before) or a
-  // genuine final close (nothing left open after), never mid-switch. A bit
-  // of buffer after the CSS transition before the panel is actually moved
-  // back to its original slide position, so the collapse finishes playing
-  // first.
-  const CLOSE_ANIMATION_MS = 600;
+  const CONTENT_FADE_MS = 180;
+  // The slot's OWN height transition — keep in sync with the
+  // `.ttlr_prev-content_slot .ttlr_prev-episodes_wrap` transition duration
+  // in sky-ttlr.css (450ms). Only ever triggered on a genuine first-open
+  // (nothing was open before) or a genuine final close (nothing left open
+  // after), never mid-switch. This is exactly that CSS duration, not extra
+  // buffer on top of it — the panel is moved back to its original slide the
+  // instant the collapse finishes, not noticeably before or after.
+  const CLOSE_ANIMATION_MS = 450;
+  // How long the slot's own height transition (see CLOSE_ANIMATION_MS
+  // above) takes to fully expand on a first open — used to delay the
+  // auto-scroll below until the slot has actually reached its final
+  // height, not just started growing.
+  const SLOT_EXPAND_MS = 450;
 
   function fadeOut(panel, onDone) {
     panel.style.transition = `opacity ${CONTENT_FADE_MS}ms ease`;
@@ -2064,6 +2070,15 @@ ttlrReady('prev-content cards', function () {
 
     if (!openPanel) {
       showNewPanel(); // nothing was open — slot expands + content fades in together
+      // Genuine first open only (not a switch between two already-open
+      // months, which the user can already see) — the expanded panel can
+      // land below the viewport with nothing to suggest anything happened,
+      // so nudge the page down once the slot has actually finished
+      // expanding to its full height.
+      window.setTimeout(() => {
+        if (seq !== openSeq) return; // superseded by a newer click meanwhile
+        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, SLOT_EXPAND_MS);
       return;
     }
 
@@ -2279,5 +2294,40 @@ ttlrReady('prev-content month badge', function () {
     } catch (err) {
       console.error('[ttlr] prev-content month badge: failed to read remote progress', err);
     }
+  });
+});
+
+/* ---- Share link: [share-link="btn"] copies the current page URL to the
+   clipboard and shows "Copied URL" in place of the button's own label for
+   ~5s before reverting. ---- */
+
+ttlrReady('share link', function () {
+  const buttons = document.querySelectorAll('[share-link="btn"]');
+  console.log('[ttlr] share link: found ' + buttons.length + ' [share-link="btn"] element(s)');
+
+  const COPIED_RESET_MS = 5000;
+
+  buttons.forEach((btn) => {
+    // Prefer a nested text-bearing child (common Webflow pattern: an icon
+    // next to a text div) so swapping the label doesn't wipe out an icon
+    // that might live directly on the button itself.
+    const textEl = Array.from(btn.children).find((el) => el.textContent.trim()) || btn;
+    const originalText = textEl.textContent;
+    let resetTimer = null;
+
+    btn.addEventListener('click', async () => {
+      console.log('[ttlr] share link: clicked, copying', window.location.href);
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+      } catch (err) {
+        console.error('[ttlr] share link: failed to copy URL to clipboard', err);
+        return;
+      }
+      window.clearTimeout(resetTimer);
+      textEl.textContent = 'Copied URL';
+      resetTimer = window.setTimeout(() => {
+        textEl.textContent = originalText;
+      }, COPIED_RESET_MS);
+    });
   });
 });
