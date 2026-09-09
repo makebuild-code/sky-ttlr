@@ -2332,7 +2332,13 @@ ttlrReady('share link', function () {
     const originalText = textEl.textContent;
     let resetTimer = null;
 
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', async (event) => {
+      // Guard against a bare <button> defaulting to type="submit" if it's
+      // ever sitting inside a <form> — without this, a native form submit
+      // could fire (and possibly navigate/reload) before the async
+      // clipboard write below even resolves, which would look exactly like
+      // "clicking does nothing."
+      event.preventDefault();
       console.log('[ttlr] share link: clicked, copying', window.location.href);
       try {
         await navigator.clipboard.writeText(window.location.href);
