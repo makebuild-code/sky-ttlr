@@ -2073,11 +2073,13 @@ ttlrReady('prev-content cards', function () {
     // at full height the entire time; only the content underneath swaps.
     const old = openPanel;
     openPanel = null;
+    // Removed instantly, right on click — safe even though the panel itself
+    // isn't moved back out of the slot until after the fade: the panel isn't
+    // a descendant of this row again until that later insertBefore, so
+    // Designer's `.ttlr_cms_month-item.is-open .ttlr_prev-episodes_wrap`
+    // rule has nothing to match here either way.
+    old.originalParent.classList.remove('is-open');
     fadeOut(old.panel, () => {
-      // Same reasoning as above, mirrored: only clear the OLD row's
-      // .is-open at the instant its panel is actually being placed back
-      // into it, so that rule never gets a chance to match+animate either.
-      old.originalParent.classList.remove('is-open');
       old.originalParent.insertBefore(old.panel, old.originalNextSibling);
       clearFadeStyles(old.panel);
       showNewPanel();
@@ -2085,10 +2087,8 @@ ttlrReady('prev-content cards', function () {
   }
 
   function closeMonth(monthItem) {
-    if (!openPanel) {
-      monthItem.classList.remove('is-open');
-      return;
-    }
+    monthItem.classList.remove('is-open'); // instant, right on click — see the note in openMonth's switch branch for why this is safe before the panel actually moves back
+    if (!openPanel) return;
     const { panel, originalParent, originalNextSibling, slot } = openPanel;
     openPanel = null;
     // Genuine final close (nothing opening after this one) — fade the
@@ -2097,7 +2097,6 @@ ttlrReady('prev-content cards', function () {
     fadeOut(panel, () => {
       slot.classList.remove('is-open');
       window.setTimeout(() => {
-        originalParent.classList.remove('is-open'); // deferred to the same instant the panel actually returns — see openMonth's showNewPanel for why
         originalParent.insertBefore(panel, originalNextSibling);
         clearFadeStyles(panel);
       }, CLOSE_ANIMATION_MS);
