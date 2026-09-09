@@ -218,16 +218,34 @@ html.ttlr-is-resizing * {
   position: static !important;
 }
 
-/* Duration kept in sync with CLOSE_ANIMATION_MS in sky-ttlr.js (450ms) —
-   that's how long closeMonth waits after this collapses before actually
-   moving the panel back to its original slide, so a longer duration here
-   would get visibly cut off mid-collapse. */
+/* Duration kept in sync with CLOSE_ANIMATION_MS/SLOT_EXPAND_MS in
+   sky-ttlr.js (200ms) — that's how long closeMonth waits after this
+   collapses before actually moving the panel back to its original slide,
+   and how long openMonth waits before auto-scrolling to a freshly-opened
+   panel, so a longer duration here would get visibly cut off mid-transition
+   either way. Kept short specifically so opening doesn't feel slower than
+   closing: content fades in over CONTENT_FADE_MS (180ms) while this is
+   still growing, so a much longer height transition here left the panel
+   sitting fully visible but still visibly expanding for a while after —
+   closing never has that problem since its content is already invisible by
+   the time the collapse plays. */
 .ttlr_prev-content_slot .ttlr_prev-episodes_wrap {
   height: 0;
   overflow: hidden;
-  transition: height 0.45s ease;
+  transition: height 0.2s ease;
 }
 
 .ttlr_prev-content_slot.is-open .ttlr_prev-episodes_wrap {
   height: 20rem;
+}
+
+/* Designer's own "this card is open"/hover scale styling (defined outside
+   this file) sets `transition: transform ease 0.8s` directly on
+   `.ttlr_card-wrap` — confirmed via a live Custom Code dump. `!important`
+   since that's an equal-or-higher-specificity rule of Designer's own
+   (`.ttlr_cms_month-item.is-open .ttlr_card-wrap` in particular), same
+   pattern already used elsewhere in this file for winning against
+   Designer-authored specificity. */
+.ttlr_card-wrap {
+  transition: transform 0.2s ease !important;
 }
