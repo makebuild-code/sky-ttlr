@@ -513,24 +513,25 @@ function initEpisodeRouter(listEl) {
         // and strips the href on disabled buttons, so this is a harmless
         // no-op in that case — nothing to guard here.
         //
-        // Navigate directly via the button's own href rather than calling
-        // .click() on it: wireNavButton sets a real `href` on an <a> button
-        // ("native navigation — no JS needed beyond this"), but a synthetic
-        // .click() fired from a setInterval callback isn't a trusted user
-        // gesture — if that <a> happens to carry target="_blank" (or a
-        // browser is just stricter about it), the popup/tab it would open
-        // can get silently blocked, which looks exactly like "the countdown
-        // finishes but nothing happens." Setting location.href directly
-        // always navigates in the current tab regardless.
+        // Navigate directly rather than simulating a click on the button:
+        // the confirmed live markup for [data-series-nav="next-btn"] is a
+        // plain <button>, not an <a> — its navigation comes entirely from a
+        // JS click listener wireNavButton attaches. A script-dispatched
+        // click is always `isTrusted: false`; nothing in our own code checks
+        // that, but there's no way to be sure some other handler on the
+        // page (a Webflow interaction, etc.) doesn't — and confirmed
+        // firsthand this countdown's auto-click was NOT reliably reaching
+        // wherever manual clicks actually navigate from. wireNavButton now
+        // also stamps the resolved destination straight onto the button as
+        // `data-nav-href` (both for <a> and non-<a> buttons), so this can
+        // read it directly and navigate itself — no click simulated at all.
         const nextBtns = Array.from(document.querySelectorAll('[data-series-nav="next-btn"]'));
-        const nextHref = nextBtns.map((btn) => btn.href || btn.getAttribute('href')).find(Boolean);
+        const nextHref = nextBtns.map((btn) => btn.dataset.navHref || btn.href || btn.getAttribute('href')).find(Boolean);
         console.log('[ttlr] series-end: countdown reached 0, advancing to next series ->', nextHref);
         if (nextHref) {
           window.location.href = nextHref;
         } else {
-          // No <a href> found on any matching button — must be a non-anchor
-          // element wired via wireNavButton's own click-listener branch
-          // instead. Fall back to a real click for that case.
+          console.warn('[ttlr] series-end: countdown finished but no destination could be read off any [data-series-nav="next-btn"] element — falling back to a forced click', nextBtns);
           nextBtns.forEach((btn) => btn.click());
         }
       }
@@ -1454,6 +1455,7 @@ function initSeriesNav(sourceEl) {
         btn.classList.add('is-disabled');
         btn.setAttribute('aria-disabled', 'true');
         if (btn.tagName === 'A') btn.removeAttribute('href');
+        delete btn.dataset.navHref;
         return;
       }
       btn.classList.remove('is-disabled');
@@ -1463,6 +1465,12 @@ function initSeriesNav(sourceEl) {
       } else {
         btn.addEventListener('click', () => { window.location.href = item.href; });
       }
+      // Also exposed as a plain data attribute on EVERY button (anchor or
+      // not) so other code (the series-end countdown's auto-advance) can
+      // read the destination directly and navigate itself, rather than
+      // needing to simulate a click on this element and hope whatever's
+      // listening responds to a script-dispatched (always untrusted) event.
+      btn.dataset.navHref = item.href;
     });
   }
 
