@@ -206,15 +206,6 @@ html.ttlr-is-resizing * {
   aspect-ratio: 16 / 9;
 }
 
-/* The month row's own .is-open styling (background/border/etc.) is
-   Designer-authored, outside this file, with no transition of its own —
-   snapping instantly when JS toggles the class in openMonth/closeMonth.
-   `all` is intentional here since we don't own/control which specific
-   properties that rule sets; harmless for whichever ones don't change. */
-.ttlr_cms_month-item {
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
 .ttlr_prev-content_slot {
   position: static !important;
 }
