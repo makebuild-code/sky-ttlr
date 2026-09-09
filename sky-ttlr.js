@@ -2034,13 +2034,27 @@ ttlrReady('prev-content cards', function () {
     openSeq++;
     const seq = openSeq;
 
+    // Clean up any OTHER stray .is-open item (e.g. from static markup shipping
+    // more than one) that isn't the one we're precisely tracking below — that
+    // one's removal is deferred to the moment its panel actually leaves, not
+    // done here.
     document.querySelectorAll('.ttlr_cms_month-item.is-open').forEach((item) => {
-      if (item !== monthItem) item.classList.remove('is-open');
+      if (item === monthItem) return;
+      if (openPanel && item === openPanel.originalParent) return;
+      item.classList.remove('is-open');
     });
-    monthItem.classList.add('is-open'); // still drives the card's own highlight styling
 
     function showNewPanel() {
       if (seq !== openSeq) return; // superseded by an even newer click meanwhile
+      // Only flip .is-open on the row at the SAME instant the panel actually
+      // leaves it for the slot — the page has its OWN Designer-authored CSS
+      // keyed off `.ttlr_cms_month-item.is-open .ttlr_prev-episodes_wrap`
+      // (separate from our slot-scoped rule below). Flipping this any
+      // earlier (e.g. up front, before the panel has moved) lets that rule
+      // match while the panel is still sitting in its original row and
+      // animate it open IN PLACE, right before we yank it into the slot —
+      // that's the visible "jump" this whole function exists to avoid.
+      monthItem.classList.add('is-open'); // still drives the card's own highlight styling
       openPanel = { panel, originalParent: monthItem, originalNextSibling: panel.nextSibling, slot };
       slot.classList.add('is-open'); // expands the slot itself — a no-op if it's already expanded
       slot.appendChild(panel);
@@ -2060,6 +2074,10 @@ ttlrReady('prev-content cards', function () {
     const old = openPanel;
     openPanel = null;
     fadeOut(old.panel, () => {
+      // Same reasoning as above, mirrored: only clear the OLD row's
+      // .is-open at the instant its panel is actually being placed back
+      // into it, so that rule never gets a chance to match+animate either.
+      old.originalParent.classList.remove('is-open');
       old.originalParent.insertBefore(old.panel, old.originalNextSibling);
       clearFadeStyles(old.panel);
       showNewPanel();
@@ -2067,8 +2085,10 @@ ttlrReady('prev-content cards', function () {
   }
 
   function closeMonth(monthItem) {
-    monthItem.classList.remove('is-open');
-    if (!openPanel) return;
+    if (!openPanel) {
+      monthItem.classList.remove('is-open');
+      return;
+    }
     const { panel, originalParent, originalNextSibling, slot } = openPanel;
     openPanel = null;
     // Genuine final close (nothing opening after this one) — fade the
@@ -2077,6 +2097,7 @@ ttlrReady('prev-content cards', function () {
     fadeOut(panel, () => {
       slot.classList.remove('is-open');
       window.setTimeout(() => {
+        originalParent.classList.remove('is-open'); // deferred to the same instant the panel actually returns — see openMonth's showNewPanel for why
         originalParent.insertBefore(panel, originalNextSibling);
         clearFadeStyles(panel);
       }, CLOSE_ANIMATION_MS);
