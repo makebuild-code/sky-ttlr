@@ -2347,7 +2347,7 @@ ttlrReady('share link', function () {
         return;
       }
       window.clearTimeout(resetTimer);
-      textEl.textContent = 'Copied URL';
+      textEl.textContent = 'URL Copied!';
       resetTimer = window.setTimeout(() => {
         textEl.textContent = originalText;
       }, COPIED_RESET_MS);
