@@ -716,7 +716,7 @@ function initEpisodeRouter(listEl) {
   }
 
   // ---- Show exactly one item; sync the URL; update button states ----
-  const EPISODE_TRANSITION_MS = 150; // keep in sync with the CSS transition duration on .ttlr_episode_cms_item
+  const EPISODE_TRANSITION_MS = 400; // keep in sync with the CSS transition duration on .ttlr_episode_cms_item
 
   function show(index) {
     const outgoingItem = hasShownOnce ? items[currentIndex] : null;
