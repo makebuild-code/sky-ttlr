@@ -12,12 +12,19 @@
   pointer-events: none;
 }
 
+/* Duration kept in sync with EPISODE_TRANSITION_MS in sky-ttlr.js (0.4s) —
+   that's how long show() waits before actually swapping which episode is
+   visible, so a longer CSS duration here would get visibly cut off
+   mid-fade. Same eased, decelerating curve used elsewhere on this site
+   (e.g. the Re-Watch panel's open/close animation) rather than a plain
+   linear/ease fade. */
 .ttlr_episode_cms_item {
-  transition: opacity 0.15s ease;
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .ttlr_episode_cms_item.ttlr-episode-fade {
   opacity: 0;
+  transform: translateY(8px);
 }
 
 .ttlr_episode_progress_inner {
