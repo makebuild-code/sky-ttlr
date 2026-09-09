@@ -206,14 +206,26 @@ html.ttlr-is-resizing * {
   aspect-ratio: 16 / 9;
 }
 
+/* Swiper adds/removes .swiper-button-disabled itself as slides change
+   (Navigation module core behavior) — this just hides the Prev arrow
+   entirely on the first slide instead of leaving it dimmed/disabled in
+   place. Next is left alone (only Prev was asked to disappear). */
+.swiper-button-prev.swiper-button-disabled {
+  display: none;
+}
+
 .ttlr_prev-content_slot {
   position: static !important;
 }
 
+/* Duration kept in sync with CLOSE_ANIMATION_MS in sky-ttlr.js (450ms) —
+   that's how long closeMonth waits after this collapses before actually
+   moving the panel back to its original slide, so a longer duration here
+   would get visibly cut off mid-collapse. */
 .ttlr_prev-content_slot .ttlr_prev-episodes_wrap {
   height: 0;
   overflow: hidden;
-  transition: height 0.8s ease;
+  transition: height 0.45s ease;
 }
 
 .ttlr_prev-content_slot.is-open .ttlr_prev-episodes_wrap {
