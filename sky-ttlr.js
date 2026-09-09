@@ -508,14 +508,31 @@ function initEpisodeRouter(listEl) {
       seriesSecondsEl.textContent = String(Math.max(0, secondsLeft));
       if (secondsLeft <= 0) {
         window.clearInterval(seriesEndCountdownInterval);
-        // Auto-advance: click whichever "next series" button(s) are on the
-        // page. If there's no next series, wireNavButton() (in initSeriesNav)
-        // never attaches a click handler and strips the href on disabled
-        // buttons, so this is a harmless no-op in that case — nothing to
-        // guard here.
-        const nextBtns = document.querySelectorAll('[data-series-nav="next-btn"]');
-        console.log('[ttlr] series-end: countdown reached 0, auto-clicking ' + nextBtns.length + ' [data-series-nav="next-btn"] element(s)');
-        nextBtns.forEach((btn) => btn.click());
+        // Auto-advance to the next series. If there's no next series,
+        // wireNavButton() (in initSeriesNav) never attaches a click handler
+        // and strips the href on disabled buttons, so this is a harmless
+        // no-op in that case — nothing to guard here.
+        //
+        // Navigate directly via the button's own href rather than calling
+        // .click() on it: wireNavButton sets a real `href` on an <a> button
+        // ("native navigation — no JS needed beyond this"), but a synthetic
+        // .click() fired from a setInterval callback isn't a trusted user
+        // gesture — if that <a> happens to carry target="_blank" (or a
+        // browser is just stricter about it), the popup/tab it would open
+        // can get silently blocked, which looks exactly like "the countdown
+        // finishes but nothing happens." Setting location.href directly
+        // always navigates in the current tab regardless.
+        const nextBtns = Array.from(document.querySelectorAll('[data-series-nav="next-btn"]'));
+        const nextHref = nextBtns.map((btn) => btn.href || btn.getAttribute('href')).find(Boolean);
+        console.log('[ttlr] series-end: countdown reached 0, advancing to next series ->', nextHref);
+        if (nextHref) {
+          window.location.href = nextHref;
+        } else {
+          // No <a href> found on any matching button — must be a non-anchor
+          // element wired via wireNavButton's own click-listener branch
+          // instead. Fall back to a real click for that case.
+          nextBtns.forEach((btn) => btn.click());
+        }
       }
     }, 1000);
   }
