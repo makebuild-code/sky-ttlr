@@ -1726,7 +1726,7 @@ function initPrevContentSeriesCardFill(cardEl) {
   let seriesId = null;
   try {
     const path = new URL(cardEl.href, window.location.origin).pathname;
-    seriesId = path.match(/\/serie\/([^/]+)/)?.[1] || null;
+    seriesId = path.match(/\/series\/([^/]+)/)?.[1] || null;
   } catch (err) {
     console.error('[ttlr] prev-content series card fill: failed to derive seriesId from href', cardEl.href, err);
   }
@@ -2279,7 +2279,7 @@ ttlrReady('prev-content month badge', function () {
         .map((card) => {
           try {
             const path = new URL(card.href, window.location.origin).pathname;
-            return path.match(/\/serie\/([^/]+)/)?.[1] || null;
+            return path.match(/\/series\/([^/]+)/)?.[1] || null;
           } catch (err) {
             return null;
           }
