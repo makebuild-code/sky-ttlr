@@ -214,6 +214,15 @@ html.ttlr-is-resizing * {
   display: none;
 }
 
+/* Swiper also adds .swiper-button-lock to BOTH nav buttons whenever there
+   aren't enough slides to need scrolling at all (fewer slides than
+   slidesPerView) — its own bundled stylesheet normally hides these via this
+   same class, but that stylesheet isn't confirmed loaded on every page here,
+   so this is spelled out directly rather than depending on it. */
+.swiper-button-lock {
+  display: none !important;
+}
+
 .ttlr_prev-content_slot {
   position: static !important;
 }
