@@ -783,8 +783,13 @@ function initEpisodeRouter(listEl) {
 
   function updateButtonStates(index) {
     const current = items[index];
-    const prevBtn = current.querySelector('.ttlr_episode_button.is-prev');
-    const nextBtn = current.querySelector('.ttlr_episode_button.is-next');
+    // #back-btn / #next-btn (2026-09-16, replacing the old
+    // .ttlr_episode_button.is-prev/.is-next class-based lookup) — scoped
+    // via current.querySelector, so a static id repeated across every
+    // CMS-bound episode item still correctly resolves to the one inside
+    // THIS episode, not the document's first match.
+    const prevBtn = current.querySelector('#back-btn');
+    const nextBtn = current.querySelector('#next-btn');
 
     if (prevBtn) {
       // On episode 1 there's nothing to go back to at all — hidden
@@ -795,6 +800,15 @@ function initEpisodeRouter(listEl) {
       prevBtn.classList.toggle('is-disabled', disablePrev);
       prevBtn.setAttribute('aria-disabled', String(disablePrev));
       prevBtn.style.display = disablePrev ? 'none' : '';
+      // Whole label set directly on the button (2026-09-16) — previously
+      // only a nested [prev-episode-number] element's text was updated,
+      // leaving the surrounding "Back to: EP" wording as static Designer
+      // markup. Skipped when disabled/hidden, since there's no adjacent
+      // episode to name.
+      if (!disablePrev) {
+        const prevItem = items[index - 1];
+        prevBtn.textContent = `Back to: EP${prevItem ? numberOf(prevItem) || '' : ''}`;
+      }
     }
 
     if (nextBtn) {
@@ -807,34 +821,13 @@ function initEpisodeRouter(listEl) {
       nextBtn.setAttribute('aria-disabled', 'false');
       if (index === items.length - 1) {
         nextBtn.textContent = 'Finish Series';
+      } else {
+        // Same whole-label treatment as Back — assumed "Next: EP{n}"
+        // wording to mirror the confirmed "Back to: EP{n}" pattern; flag
+        // if the actual copy should read differently.
+        const nextItem = items[index + 1];
+        nextBtn.textContent = `Next: EP${nextItem ? numberOf(nextItem) || '' : ''}`;
       }
-    }
-
-    // ---- [next-episode-number] / [prev-episode-number]: filled with the ----
-    // adjacent episode's actual visible number, not index±1 (kept
-    // consistent with numberOf() everywhere else, in case numbers are ever
-    // non-contiguous). No Designer binding needed for either — the script
-    // writes the attribute value AND mirrors it into the element's text,
-    // so it works whether you style off the attribute (content:
-    // attr(next-episode-number)) or just read the element's own text.
-    const nextNumberTarget = current.querySelector('[next-episode-number]');
-    if (nextNumberTarget) {
-      const nextItem = items[index + 1];
-      // Last episode: no next item — left blank rather than guessing at a
-      // number that doesn't exist (the Next button itself becomes "Finish
-      // Series" here instead, see above).
-      const nextNumber = nextItem ? numberOf(nextItem) || '' : '';
-      nextNumberTarget.setAttribute('next-episode-number', nextNumber);
-      nextNumberTarget.textContent = nextNumber;
-    }
-
-    const prevNumberTarget = current.querySelector('[prev-episode-number]');
-    if (prevNumberTarget) {
-      const prevItem = items[index - 1];
-      // First episode: no prev item — left blank, same reasoning as above.
-      const prevNumber = prevItem ? numberOf(prevItem) || '' : '';
-      prevNumberTarget.setAttribute('prev-episode-number', prevNumber);
-      prevNumberTarget.textContent = prevNumber;
     }
   }
 
@@ -847,8 +840,8 @@ function initEpisodeRouter(listEl) {
   }
 
   items.forEach((item, index) => {
-    const prevBtn = item.querySelector('.ttlr_episode_button.is-prev');
-    const nextBtn = item.querySelector('.ttlr_episode_button.is-next');
+    const prevBtn = item.querySelector('#back-btn');
+    const nextBtn = item.querySelector('#next-btn');
     if (prevBtn) prevBtn.addEventListener('click', () => goTo(index - 1));
     if (nextBtn) {
       const isLast = index === items.length - 1;
@@ -1527,22 +1520,29 @@ function initSeriesSwiperSafe(root) {
   }
 }
 
+// The outer Re-Watch month rail's own swiper root was renamed from
+// .ttlr_cms_series-wrapper to .ttlr_cms_month-wrapper directly in Designer
+// (2026-09-16) — everything else (hero, the nested per-month episode
+// swiper, bookmarks) still uses the original class, so both are matched
+// here rather than replacing one with the other.
+const SERIES_SWIPER_SELECTOR = '.ttlr_cms_series-wrapper, .ttlr_cms_month-wrapper';
+
 ttlrReady('series swiper', function () {
   if (typeof Swiper === 'undefined') {
     console.warn('[ttlr] series swiper: Swiper is not loaded — check its <script> tag is present and loads before this file.');
     return;
   }
-  document.querySelectorAll('.ttlr_cms_series-wrapper').forEach(initSeriesSwiperSafe);
+  document.querySelectorAll(SERIES_SWIPER_SELECTOR).forEach(initSeriesSwiperSafe);
 
   // Fallback for the (separate, still-possible) case of genuinely
   // asynchronously-inserted CMS content this one-time scan can't see yet —
-  // catches any .ttlr_cms_series-wrapper added to the DOM after this point.
+  // catches any matching wrapper added to the DOM after this point.
   const seriesSwiperObserver = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       mutation.addedNodes.forEach((node) => {
         if (node.nodeType !== 1) return;
-        if (node.matches?.('.ttlr_cms_series-wrapper')) initSeriesSwiperSafe(node);
-        node.querySelectorAll?.('.ttlr_cms_series-wrapper').forEach(initSeriesSwiperSafe);
+        if (node.matches?.(SERIES_SWIPER_SELECTOR)) initSeriesSwiperSafe(node);
+        node.querySelectorAll?.(SERIES_SWIPER_SELECTOR).forEach(initSeriesSwiperSafe);
       });
     });
   });
@@ -1573,8 +1573,19 @@ function initSeriesSwiper(root) {
   // the hero wrap only gets nav buttons if it has its own local siblings.
   const scope = root.parentElement || document;
   const isHeroSeries = !!root.closest('.ttlr_hero_series-wrap');
-  const nextEl = scope.querySelector('.swiper-button-next') || (isHeroSeries ? document.querySelector('.swiper-button-next') : undefined);
-  const prevEl = scope.querySelector('.swiper-button-prev') || (isHeroSeries ? document.querySelector('.swiper-button-prev') : undefined);
+  // The outer Re-Watch month rail (.ttlr_cms_month-wrapper) moved its own
+  // Prev/Next buttons (2026-09-16) into a .rail_controls block that's no
+  // longer a local sibling of the swiper root at all — it now lives inside
+  // the SECTION's OTHER .ttlr_prev-content_wrap (next to the heading),
+  // rather than the one wrapping the swiper itself. Scoped specifically to
+  // this class (not broadened to the whole section) so it can't accidentally
+  // steal these buttons for the nested per-month episode swiper, which
+  // shares the same enclosing .ttlr_prev-content_section but has no nav
+  // buttons of its own.
+  const isPrevContentMonths = root.classList.contains('ttlr_cms_month-wrapper');
+  const railControls = isPrevContentMonths ? root.closest('.ttlr_prev-content_section')?.querySelector('.rail_controls') : null;
+  const nextEl = railControls?.querySelector('.swiper-button-next') || scope.querySelector('.swiper-button-next') || (isHeroSeries ? document.querySelector('.swiper-button-next') : undefined);
+  const prevEl = railControls?.querySelector('.swiper-button-prev') || scope.querySelector('.swiper-button-prev') || (isHeroSeries ? document.querySelector('.swiper-button-prev') : undefined);
 
   console.log('[ttlr] series swiper: initializing', root, '/ isHeroSeries', isHeroSeries, '/ next', nextEl, '/ prev', prevEl);
 
@@ -1994,7 +2005,12 @@ ttlrReady('prev-content cards', function () {
   // One slot per Re-Watch carousel, created lazily right after the swiper
   // root (both children of .ttlr_prev-content_wrap) — reused across opens.
   function getSlot(monthItem) {
-    const swiperRoot = monthItem.closest('.ttlr_cms_series-wrapper.swiper');
+    // Renamed from .ttlr_cms_series-wrapper to .ttlr_cms_month-wrapper
+    // directly in Designer (2026-09-16) — this is the OUTER month rail
+    // specifically (never the nested per-month episode swiper, which still
+    // uses the old class), so this selector was switched rather than
+    // widened to match both.
+    const swiperRoot = monthItem.closest('.ttlr_cms_month-wrapper.swiper');
     const container = swiperRoot?.parentElement;
     if (!swiperRoot || !container) {
       console.warn('[ttlr] prev-content cards: could not find the Re-Watch swiper root (or its parent) as an ancestor of this month item — panel cannot be relocated', monthItem);
