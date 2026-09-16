@@ -1619,6 +1619,10 @@ function initSeriesSwiper(root) {
   // narrower viewport on its own, so no separate tablet breakpoint is
   // needed here (unlike the fixed-count carousels below).
   new Swiper(root, {
+    // Swaps the cursor to grab/grabbing based on Swiper's own actual drag
+    // state (applied to .swiper-wrapper) — more reliable than a CSS :active
+    // rule, which doesn't track touch drag state the same way.
+    grabCursor: true,
     slidesPerView: isHeroSeries ? 'auto' : 3,
     spaceBetween: 20,
     // Tablet shows 1.5 slides on the fixed-count carousels (a deliberate
