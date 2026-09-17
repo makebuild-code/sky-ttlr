@@ -13,16 +13,13 @@
 // This polls briefly instead of assuming either order.
 function waitForMemberstack(timeoutMs = 5000) {
   if (window.$memberstackDom) {
-    console.log('[ttlr] waitForMemberstack: already available');
     return Promise.resolve(window.$memberstackDom);
   }
-  console.log('[ttlr] waitForMemberstack: not yet available, polling…');
   return new Promise((resolve) => {
     const start = Date.now();
     const interval = window.setInterval(() => {
       if (window.$memberstackDom) {
         window.clearInterval(interval);
-        console.log('[ttlr] waitForMemberstack: became available after ' + (Date.now() - start) + 'ms');
         resolve(window.$memberstackDom);
       } else if (Date.now() - start > timeoutMs) {
         window.clearInterval(interval);
@@ -62,13 +59,11 @@ function ttlrReady(label, fn) {
 
 ttlrReady('episode router', function () {
   const lists = document.querySelectorAll('.ttlr_episode_cms_list');
-  console.log('[ttlr] episode router: found ' + lists.length + ' .ttlr_episode_cms_list element(s) on this page');
   lists.forEach(initEpisodeRouter);
 });
 
 function initEpisodeRouter(listEl) {
   const items = Array.from(listEl.querySelectorAll('.ttlr_episode_cms_item'));
-  console.log('[ttlr] initEpisodeRouter: found ' + items.length + ' .ttlr_episode_cms_item inside this list', listEl);
   if (!items.length) {
     console.warn('[ttlr] initEpisodeRouter: bailing out, no .ttlr_episode_cms_item found — nothing in this section (episode paging, bookmarks, progress bar) will run.');
     return;
@@ -201,7 +196,6 @@ function initEpisodeRouter(listEl) {
         const { data: updatedMember } = await ms.updateMember({
           customFields: { [PROGRESS_FIELD]: JSON.stringify(merged) },
         });
-        console.log('[ttlr] progress: synced to Memberstack ->', merged, '/ updateMember response customFields:', updatedMember?.customFields);
         if (!updatedMember?.customFields?.[PROGRESS_FIELD]) {
           // Same symptom previously confirmed for ttl-bookmarks: Memberstack
           // silently drops a customFields write whose key doesn't exactly
@@ -218,7 +212,6 @@ function initEpisodeRouter(listEl) {
   // afterward, debounced, in the background — no network round-trip on the
   // click path, so the UI never waits on it.
   function markComplete(episodeId) {
-    console.log('[ttlr] markComplete called for episode', episodeId);
     if (!episodeId) return;
     if (progressCache.episodes[episodeId]?.completed) return; // already done, nothing to do
 
@@ -250,7 +243,6 @@ function initEpisodeRouter(listEl) {
     }
 
     saveLocalProgress(progressCache);
-    console.log('[ttlr] markComplete: local state updated instantly, Memberstack sync queued', progressCache);
     saveProgressToMemberstackDebounced();
   }
 
@@ -266,7 +258,6 @@ function initEpisodeRouter(listEl) {
   // The bar's own immediate wrapper (holds the fill + segments) — hidden
   // alongside the count text on series completion, see showSeriesEndSuccess.
   const progressBarEl = document.querySelector('.ttlr_episode_progress_inner');
-  console.log('[ttlr] progress bar: .ttlr_progress_fill', progressFill, '/ .ttlr_episode_progress_p', progressP, '/ .ttlr_episode_progress_inner', progressBarEl);
 
   let lastProgressPercent = null; // null = no comparison basis yet, so the first paint never "pulses"
 
@@ -278,7 +269,6 @@ function initEpisodeRouter(listEl) {
     const total = items.length;
     const current = total ? currentIndex + 1 : 0;
     const percent = total ? (current / total) * 100 : 0;
-    console.log('[ttlr] updateProgressDisplay: episode ' + current + '/' + total + ' (' + percent.toFixed(1) + '%)');
 
     if (progressFill) {
       // Only ever reveals more/less of Designer's own gradient via clip-path —
@@ -325,7 +315,6 @@ function initEpisodeRouter(listEl) {
   function updateProgressMask() {
     if (!progressFill) return;
     const segmentEls = Array.from(document.querySelectorAll('.ttlr_progress_segment'));
-    console.log('[ttlr] updateProgressMask: found ' + segmentEls.length + ' .ttlr_progress_segment element(s)');
     if (!segmentEls.length) return;
 
     const fillRect = progressFill.getBoundingClientRect();
@@ -373,7 +362,6 @@ function initEpisodeRouter(listEl) {
     progressFill.style.webkitMaskSize = '100% 100%';
     progressFill.style.maskRepeat = 'no-repeat';
     progressFill.style.webkitMaskRepeat = 'no-repeat';
-    console.log('[ttlr] updateProgressMask: applied SVG mask-image with ' + rects.length + ' rounded segment(s)', svg);
   }
 
   if (progressFill) {
@@ -397,7 +385,6 @@ function initEpisodeRouter(listEl) {
       const { data: member } = await ms.getCurrentMember();
       if (!member) return;
       const raw = member.customFields?.[PROGRESS_FIELD];
-      console.log('[ttlr] progress bar: remote ' + PROGRESS_FIELD + ' raw value from Memberstack:', raw);
       if (!raw) return;
       const remote = JSON.parse(raw);
       const merged = {
@@ -426,7 +413,6 @@ function initEpisodeRouter(listEl) {
   // hidden alongside the episode item itself so the success screen truly
   // fills the whole screen, not just the space the episode item occupied.
   const episodeCardsSectionEl = document.querySelector('.ttlr_episode_cards_section');
-  console.log('[ttlr] series-end: .ttlr_series-end_success', seriesEndSuccessEl, '/ .ttlr_completed_episode_wrap', completedEpisodeWrapEl, '/ [data-series-element="seconds"]', seriesSecondsEl, '/ .ttlr_completed_episode_bottom', completedEpisodeBottomEl, '/ .ttlr_episode_cards_section', episodeCardsSectionEl);
 
   // Force a clean closed state on load, regardless of whether the static
   // Designer markup happens to already have .is-active on either element
@@ -486,7 +472,6 @@ function initEpisodeRouter(listEl) {
     // the end, or showing a disabled button next to a blank thumbnail.
     const nextBtn = document.querySelector('[data-series-nav="next-btn"]');
     if (!nextBtn || nextBtn.classList.contains('is-disabled')) {
-      console.log('[ttlr] series-end: no next series available — hiding .ttlr_completed_episode_bottom instead of starting a countdown with nothing to advance to');
       if (completedEpisodeBottomEl) completedEpisodeBottomEl.style.display = 'none';
       return;
     }
@@ -502,7 +487,6 @@ function initEpisodeRouter(listEl) {
     window.clearInterval(seriesEndCountdownInterval);
     let secondsLeft = 30;
     seriesSecondsEl.textContent = String(secondsLeft);
-    console.log('[ttlr] series-end: countdown started at ' + secondsLeft + 's');
     seriesEndCountdownInterval = window.setInterval(() => {
       secondsLeft -= 1;
       seriesSecondsEl.textContent = String(Math.max(0, secondsLeft));
@@ -527,7 +511,6 @@ function initEpisodeRouter(listEl) {
         // read it directly and navigate itself — no click simulated at all.
         const nextBtns = Array.from(document.querySelectorAll('[data-series-nav="next-btn"]'));
         const nextHref = nextBtns.map((btn) => btn.dataset.navHref || btn.href || btn.getAttribute('href')).find(Boolean);
-        console.log('[ttlr] series-end: countdown reached 0, advancing to next series ->', nextHref);
         if (nextHref) {
           window.location.href = nextHref;
         } else {
@@ -556,7 +539,6 @@ function initEpisodeRouter(listEl) {
   // write never contend over the same field's read-modify-write cycle.
   const BOOKMARKS_FIELD = 'ttl-bookmarks';
   const bookmarkBtn = document.querySelector('[bookmark="btn"]');
-  console.log('[ttlr] bookmarks: [bookmark="btn"] element', bookmarkBtn);
   if (!bookmarkBtn) {
     console.warn('[ttlr] bookmarks: no element matches [bookmark="btn"] on this page — bookmark button will not do anything until that attribute exists in Designer.');
   }
@@ -571,7 +553,6 @@ function initEpisodeRouter(listEl) {
   function setBookmarkVisual(isBookmarked) {
     if (!bookmarkBtn) return;
     const path = bookmarkBtn.querySelector('svg path');
-    console.log('[ttlr] setBookmarkVisual(' + isBookmarked + ') — svg path found:', !!path);
     if (!path) {
       console.warn('[ttlr] bookmarks: [bookmark="btn"] has no <svg><path> inside it — the fill toggle has nothing to update. Check the SVG markup is a real <svg>/<path>, not a background-image.');
       return;
@@ -678,7 +659,6 @@ function initEpisodeRouter(listEl) {
         await ms.updateMember({
           customFields: { [BOOKMARKS_FIELD]: JSON.stringify(bookmarksCache) },
         });
-        console.log('[ttlr] bookmarks: synced to Memberstack ->', bookmarksCache);
       } catch (err) {
         console.error('[ttlr] Failed to save bookmark to Memberstack', err);
       }
@@ -699,7 +679,6 @@ function initEpisodeRouter(listEl) {
         const { data: member } = await ms.getCurrentMember();
         if (!member) return;
         const raw = member.customFields?.[BOOKMARKS_FIELD];
-        console.log('[ttlr] bookmarks: remote ' + BOOKMARKS_FIELD + ' raw value from Memberstack:', raw);
         if (!raw) return;
         const parsed = JSON.parse(raw);
         const remote = (Array.isArray(parsed) ? parsed : []).map(normalizeBookmark);
@@ -718,7 +697,6 @@ function initEpisodeRouter(listEl) {
     // Synchronous now — no network wait before the icon updates. The
     // Memberstack write happens afterward, debounced, in the background.
     bookmarkBtn.addEventListener('click', () => {
-      console.log('[ttlr] bookmark button clicked');
       const episodeId = idOf(items[currentIndex], currentIndex);
       const isBookmarked = bookmarksCache.some((b) => b.id === episodeId);
       bookmarksCache = isBookmarked
@@ -727,7 +705,6 @@ function initEpisodeRouter(listEl) {
 
       saveLocalBookmarks(bookmarksCache);
       setBookmarkVisual(!isBookmarked);
-      console.log('[ttlr] bookmark click: local state updated instantly ->', bookmarksCache);
 
       saveBookmarksToMemberstackDebounced();
     });
@@ -847,7 +824,6 @@ function initEpisodeRouter(listEl) {
       const isLast = index === items.length - 1;
       nextBtn.addEventListener('click', () => {
         if (isLast) {
-          console.log('[ttlr] "Finish Series" clicked on episode index ' + index);
           markComplete(idOf(item, index));
           showSeriesEndSuccess(item);
         } else {
@@ -879,7 +855,6 @@ ttlrReady('drag-drop quiz', function () {
     return;
   }
   const wraps = document.querySelectorAll('.ttlr_dragdrop_wrap');
-  console.log('[ttlr] drag-drop quiz: found ' + wraps.length + ' .ttlr_dragdrop_wrap element(s) on this page');
   wraps.forEach(initTtlrDragDrop);
 });
 
@@ -888,7 +863,6 @@ function initTtlrDragDrop(root) {
   const props = Array.from(root.querySelectorAll('.ttlr_dragdrop_prop_item[data-correct-zone]'));
   const resetBtn = root.querySelector('.ttlr_dragdrop_reset');
   const live = ensureLiveRegion(root);
-  console.log('[ttlr] initTtlrDragDrop: tray', tray, '/ ' + props.length + ' prop(s) with data-correct-zone');
 
   if (!tray || !props.length) {
     console.warn('[ttlr] initTtlrDragDrop: bailing out — missing .ttlr_dragdrop_props_wrap or no .ttlr_dragdrop_prop_item[data-correct-zone] found.');
@@ -919,8 +893,6 @@ function initTtlrDragDrop(root) {
 
     zones.set(zoneId, { wrapperEl, slotEl, label: labelText });
   });
-  console.log('[ttlr] drag-drop: zone registry ->', Array.from(zones.keys()));
-  console.log('[ttlr] drag-drop: prop correctZone values ->', props.map((p) => p.dataset.correctZone));
 
   tray.dataset.dropRole = 'tray';
   tray.setAttribute('tabindex', '0');
@@ -986,7 +958,6 @@ function initTtlrDragDrop(root) {
 
     const isCorrectZone = targetEl.dataset.zoneId === propEl.dataset.correctZone;
     const isOccupied = !!occupantOf(targetEl);
-    console.log('[ttlr] drag-drop: dropped prop (correctZone=' + propEl.dataset.correctZone + ') onto zone ' + targetEl.dataset.zoneId + ' — correctZone match: ' + isCorrectZone + ', occupied: ' + isOccupied);
 
     if (!isCorrectZone || isOccupied) {
       resetTransform(propEl); // reject — snaps back to its exact spot, nothing moved
@@ -1238,7 +1209,6 @@ function initNotesPad(root) {
     // markup (not nested inside the copy button), so this searches the whole
     // component root rather than just copyBtn's own descendants.
     let successEl = root.querySelector('.notes_copy_success');
-    console.log('[ttlr] notes: .notes_copy_success found in root?', !!successEl);
     if (!successEl) {
       // Fallback only if truly absent anywhere in this component — auto-created
       // so copy still gives feedback out of the box.
@@ -1254,7 +1224,6 @@ function initNotesPad(root) {
     }
 
     copyBtn.addEventListener('click', async () => {
-      console.log('[ttlr] notes: copy clicked');
       if (!textarea) return;
       try {
         await navigator.clipboard.writeText(textarea.value);
@@ -1277,7 +1246,6 @@ function initNotesPad(root) {
   // ---- Delete: first click arms .is-confirm, second click actually clears ----
   if (deleteBtn) {
     deleteBtn.addEventListener('click', () => {
-      console.log('[ttlr] notes: delete clicked, armed:', deleteBtn.classList.contains('is-confirm'));
       if (!deleteBtn.classList.contains('is-confirm')) {
         deleteBtn.classList.add('is-confirm');
         return;
@@ -1382,7 +1350,6 @@ ttlrReady('series nav', function () {
 
 function initSeriesNav(sourceEl) {
   const itemEls = Array.from(sourceEl.querySelectorAll('.w-dyn-item'));
-  console.log('[ttlr] series nav: found ' + itemEls.length + ' item(s) in [data-series-nav="source"]');
   if (!itemEls.length) return;
 
   const items = itemEls
@@ -1418,11 +1385,9 @@ function initSeriesNav(sourceEl) {
       };
     })
     .filter(Boolean);
-  console.log('[ttlr] series nav: extracted items ->', items);
 
   const currentPath = window.location.pathname.replace(/\/$/, '');
   const currentIndex = items.findIndex((item) => new URL(item.href).pathname.replace(/\/$/, '') === currentPath);
-  console.log('[ttlr] series nav: current page matched at index ' + currentIndex + ' of ' + items.length);
   if (currentIndex === -1) {
     console.warn('[ttlr] series nav: current page URL did not match any item in [data-series-nav="source"] — check the hidden list includes every series and each links to its own real, published page.');
   }
@@ -1559,7 +1524,6 @@ function initSeriesSwiper(root) {
   // itself once mounted — bail out if it's already there instead of
   // re-initializing.
   if (root.swiper) {
-    console.log('[ttlr] series swiper: already initialized on this element, skipping re-init', root);
     return;
   }
 
@@ -1587,7 +1551,6 @@ function initSeriesSwiper(root) {
   const nextEl = railControls?.querySelector('.swiper-button-next') || scope.querySelector('.swiper-button-next') || (isHeroSeries ? document.querySelector('.swiper-button-next') : undefined);
   const prevEl = railControls?.querySelector('.swiper-button-prev') || scope.querySelector('.swiper-button-prev') || (isHeroSeries ? document.querySelector('.swiper-button-prev') : undefined);
 
-  console.log('[ttlr] series swiper: initializing', root, '/ isHeroSeries', isHeroSeries, '/ next', nextEl, '/ prev', prevEl);
 
   // slidesPerView: 'auto' uses each .ttlr_cms_series-item's own CSS width —
   // that width needs to be set explicitly in Designer for this to size
@@ -1654,7 +1617,6 @@ ttlrReady('series card', function () {
   // 2026-08-27 (an earlier version of this assumed the wrong element and
   // never matched anything on the live page).
   const badges = document.querySelectorAll('.ttlr_badge[data-series-id]');
-  console.log('[ttlr] series card: found ' + badges.length + ' .ttlr_badge[data-series-id] element(s)');
   badges.forEach(initSeriesCard);
 });
 
@@ -1671,7 +1633,6 @@ function initSeriesCard(badgeEl) {
   // inside the same .ttlr_series_card-wrap, not a descendant of it.
   const cardEl = badgeEl.closest('.ttlr_series_card-wrap');
   const fillEl = cardEl?.querySelector('.ttlr_series_card-inner');
-  console.log('[ttlr] initSeriesCard: seriesId', seriesId, '/ wrap', wrapEl, '/ text el', textEl, '/ fill el', fillEl);
 
   function render(seriesProgress) {
     const entry = seriesProgress?.[seriesId];
@@ -1730,7 +1691,6 @@ function initSeriesCard(badgeEl) {
 ttlrReady('prev-content series card fill', function () {
   const cards = Array.from(document.querySelectorAll('.ttlr_prev-episodes_wrap .ttlr_series_card-wrap'))
     .filter((card) => !card.querySelector('.ttlr_badge[data-series-id]'));
-  console.log('[ttlr] prev-content series card fill: found ' + cards.length + ' badge-less card(s) inside .ttlr_prev-episodes_wrap');
   cards.forEach(initPrevContentSeriesCardFill);
 });
 
@@ -1746,7 +1706,6 @@ function initPrevContentSeriesCardFill(cardEl) {
     console.error('[ttlr] prev-content series card fill: failed to derive seriesId from href', cardEl.href, err);
   }
   const fillEl = cardEl.querySelector('.ttlr_series_card-inner');
-  console.log('[ttlr] prev-content series card fill: seriesId', seriesId, '/ fill el', fillEl, '/ card', cardEl);
   if (!seriesId || !fillEl) return;
 
   function render(seriesProgress) {
@@ -1792,7 +1751,6 @@ function initPrevContentSeriesCardFill(cardEl) {
 ttlrReady('series count label', function () {
   const labelEl = document.querySelector('#series-number');
   const items = document.querySelectorAll('.ttlr_cms_series-item');
-  console.log('[ttlr] series count label: #series-number', labelEl, '/ .ttlr_cms_series-item count', items.length);
   if (!labelEl) return;
 
   if (!items.length) {
@@ -1801,7 +1759,6 @@ ttlrReady('series count label', function () {
   }
   const textEl = labelEl.querySelector('div') || labelEl;
   textEl.textContent = `${items.length} Series`;
-  console.log('[ttlr] series count label: wrote "' + textEl.textContent + '"');
 });
 
 /* ---- Bookmarked episodes carousel: clones a single Designer-authored
@@ -1821,7 +1778,6 @@ ttlrReady('bookmarks list', function () {
   const listEl = document.querySelector('#bookmarks .ttlr_cms_month-list');
   const templateEl = listEl?.querySelector('.ttlr_cms_month-item');
   const sectionEl = document.querySelector('#bookmarks');
-  console.log('[ttlr] bookmarks list: #bookmarks .ttlr_cms_month-list', listEl, '/ template item', templateEl, '/ section', sectionEl);
   if (!listEl || !templateEl) return;
 
   const BOOKMARKS_FIELD = 'ttl-bookmarks';
@@ -1858,7 +1814,6 @@ ttlrReady('bookmarks list', function () {
   function removeBookmark(id) {
     const current = loadLocalBookmarks().filter((b) => b.id !== id);
     window.localStorage.setItem(BOOKMARKS_LOCAL_KEY, JSON.stringify(current));
-    console.log('[ttlr] bookmarks list: removed bookmark', id, '-> local state now', current);
 
     // Same debounce-free, write-as-is approach as the main bookmark toggle
     // in initEpisodeRouter — no merge with remote on save, since a removal
@@ -1870,7 +1825,6 @@ ttlrReady('bookmarks list', function () {
         const { data: member } = await ms.getCurrentMember();
         if (!member) return;
         await ms.updateMember({ customFields: { [BOOKMARKS_FIELD]: JSON.stringify(current) } });
-        console.log('[ttlr] bookmarks list: removal synced to Memberstack ->', current);
       } catch (err) {
         console.error('[ttlr] bookmarks list: failed to sync removal to Memberstack', err);
       }
@@ -1880,7 +1834,6 @@ ttlrReady('bookmarks list', function () {
   }
 
   function render(bookmarks, completedIds) {
-    console.log('[ttlr] bookmarks list: rendering ' + bookmarks.length + ' bookmark(s)');
     // Whole section hidden, not just the list, when there's nothing to show.
     if (sectionEl) sectionEl.style.display = bookmarks.length ? '' : 'none';
     listEl.querySelectorAll('.ttlr_cms_month-item').forEach((el) => el.remove());
@@ -1998,13 +1951,11 @@ ttlrReady('bookmarks list', function () {
 
 ttlrReady('prev-content cards', function () {
   if (document.body.dataset.ttlrPrevContentWired) {
-    console.log('[ttlr] prev-content cards: already wired on this <body>, skipping re-run (this is where a stale/soft-navigated page would silently stop getting new behavior)');
     return;
   }
   document.body.dataset.ttlrPrevContentWired = 'true';
 
   const cards = document.querySelectorAll('.ttlr_card-wrap.is-rewatch');
-  console.log('[ttlr] prev-content cards: wiring up, found ' + cards.length + ' .ttlr_card-wrap.is-rewatch element(s)');
 
   // One slot per Re-Watch carousel, created lazily right after the swiper
   // root (both children of .ttlr_prev-content_wrap) — reused across opens.
@@ -2025,7 +1976,6 @@ ttlrReady('prev-content cards', function () {
       slot = document.createElement('div');
       slot.className = 'ttlr_prev-content_slot';
       swiperRoot.insertAdjacentElement('afterend', slot);
-      console.log('[ttlr] prev-content cards: created .ttlr_prev-content_slot', slot);
     }
     return slot;
   }
@@ -2081,7 +2031,6 @@ ttlrReady('prev-content cards', function () {
   function openMonth(monthItem) {
     const panel = monthItem.querySelector(':scope > .ttlr_prev-episodes_wrap');
     const slot = getSlot(monthItem);
-    console.log('[ttlr] prev-content cards: openMonth', monthItem, '/ panel found', !!panel, '/ slot found', !!slot);
     if (!panel || !slot) return;
 
     openSeq++;
@@ -2112,7 +2061,6 @@ ttlrReady('prev-content cards', function () {
       slot.classList.add('is-open'); // expands the slot itself — a no-op if it's already expanded
       slot.appendChild(panel);
       fadeIn(panel);
-      console.log('[ttlr] prev-content cards: panel relocated into slot', panel, '->', slot);
     }
 
     if (!openPanel) {
@@ -2181,7 +2129,6 @@ ttlrReady('prev-content cards', function () {
   // default (confirmed present on the first month in a live dump) — sync
   // that to the relocated-panel behavior on load too, not just on click.
   const initiallyOpen = document.querySelector('.ttlr_cms_month-item.is-open');
-  console.log('[ttlr] prev-content cards: initial sync, month already .is-open in static markup?', initiallyOpen);
   if (initiallyOpen) openMonth(initiallyOpen);
 });
 
@@ -2206,7 +2153,6 @@ ttlrReady('hero cta', function () {
   // first written, confirmed via a live HTML dump 2026-08-27.
   const textEl = btnEl?.querySelector('.secondary-light-button > div');
   const cards = Array.from(document.querySelectorAll('.ttlr_hero .ttlr_cms_series-wrapper .ttlr_series_card-wrap'));
-  console.log('[ttlr] hero cta: button', btnEl, '/ text el', textEl, '/ found ' + cards.length + ' series card(s)');
   if (!btnEl || !textEl || !cards.length) return;
 
   const PROGRESS_FIELD = 'ttl-progress';
@@ -2219,19 +2165,16 @@ ttlrReady('hero cta', function () {
     const number = card.querySelectorAll('.series-number_wrap > div')[1]?.textContent.trim() || '';
     seriesInfo.set(seriesId, { href: card.href, number });
   });
-  console.log('[ttlr] hero cta: seriesInfo keys (from each hero card\'s data-series-id) ->', Array.from(seriesInfo.keys()));
 
   function render(seriesProgress) {
     // Logged in full so a mismatch between a hero card's data-series-id and
     // whatever key the episode page actually wrote progress under (e.g. a
     // slug/casing difference) is visible directly, instead of just silently
     // falling through to "Let's get started" with no way to tell why.
-    console.log('[ttlr] hero cta: render() called with seriesProgress ->', seriesProgress, '/ known series ids ->', Array.from(seriesInfo.keys()));
     let resumeSeriesId = null;
     let resumeEntry = null;
     for (const [seriesId] of seriesInfo) {
       const entry = seriesProgress?.[seriesId];
-      console.log('[ttlr] hero cta: checking seriesId', JSON.stringify(seriesId), '-> progress entry', entry);
       if (entry && entry.completedCount > 0 && !entry.completed) {
         resumeSeriesId = seriesId;
         resumeEntry = entry;
@@ -2251,7 +2194,6 @@ ttlrReady('hero cta', function () {
       const firstCard = cards[0];
       if (firstCard) btnEl.href = firstCard.href;
     }
-    console.log('[ttlr] hero cta: rendered ->', textEl.textContent, btnEl.href);
   }
 
   let local = {};
@@ -2289,7 +2231,6 @@ ttlrReady('hero cta', function () {
 
 ttlrReady('prev-content month badge', function () {
   const monthItems = Array.from(document.querySelectorAll('.ttlr_prev-content_wrap .ttlr_cms_month-item'));
-  console.log('[ttlr] prev-content month badge: found ' + monthItems.length + ' .ttlr_cms_month-item element(s)');
   if (!monthItems.length) return;
 
   const entries = monthItems
@@ -2308,7 +2249,6 @@ ttlrReady('prev-content month badge', function () {
       return { badgeEl, seriesIds };
     })
     .filter((entry) => entry.badgeEl && entry.seriesIds.length);
-  console.log('[ttlr] prev-content month badge: ' + entries.length + ' month(s) with a badge + series id(s)', entries);
   if (!entries.length) return;
 
   const PROGRESS_FIELD = 'ttl-progress';
@@ -2350,7 +2290,6 @@ ttlrReady('prev-content month badge', function () {
 
 ttlrReady('share link', function () {
   const buttons = document.querySelectorAll('[share-link="btn"]');
-  console.log('[ttlr] share link: found ' + buttons.length + ' [share-link="btn"] element(s)');
 
   const COPIED_RESET_MS = 5000;
 
@@ -2369,7 +2308,6 @@ ttlrReady('share link', function () {
       // clipboard write below even resolves, which would look exactly like
       // "clicking does nothing."
       event.preventDefault();
-      console.log('[ttlr] share link: clicked, copying', window.location.href);
       try {
         await navigator.clipboard.writeText(window.location.href);
       } catch (err) {
