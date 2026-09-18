@@ -1590,6 +1590,18 @@ function initSeriesSwiper(root) {
     // first/last slide before snapping back — 0 makes both edges a hard
     // stop instead, so it never visually scrolls past the last slide.
     resistanceRatio: 0,
+    // Without these, Swiper only measures slide count/width ONCE at init —
+    // if content changes afterward (CMS list items settling in, an image
+    // finishing load and resizing its slide, this site's own confirmed
+    // re-fire behavior), Swiper's cached notion of "how much there is to
+    // scroll" can go stale relative to the real DOM. That mismatch is what
+    // let Next stay enabled and scroll into empty space past the real last
+    // slide — resistanceRatio alone can't fix that, since it only affects
+    // drag elasticity, not this measurement staleness. observer/
+    // observeParents make Swiper auto-`.update()` on any relevant DOM
+    // mutation instead of trusting a one-time measurement.
+    observer: true,
+    observeParents: true,
     slidesPerView: isHeroSeries ? 'auto' : 3,
     spaceBetween: 20,
     // Tablet shows 1.5 slides on the fixed-count carousels (a deliberate
