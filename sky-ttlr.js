@@ -1586,6 +1586,10 @@ function initSeriesSwiper(root) {
     // state (applied to .swiper-wrapper) — more reliable than a CSS :active
     // rule, which doesn't track touch drag state the same way.
     grabCursor: true,
+    // Swiper's default (0.85) lets a drag/swipe rubber-band a bit past the
+    // first/last slide before snapping back — 0 makes both edges a hard
+    // stop instead, so it never visually scrolls past the last slide.
+    resistanceRatio: 0,
     slidesPerView: isHeroSeries ? 'auto' : 3,
     spaceBetween: 20,
     // Tablet shows 1.5 slides on the fixed-count carousels (a deliberate
