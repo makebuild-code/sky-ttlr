@@ -1573,14 +1573,23 @@ function initSeriesSwiper(root) {
   // Head, outside this repo) plus a small override in sky-ttlr.css keeping
   // .swiper-button-prev/-next on Designer's own layout instead of Swiper's
   // default absolute-positioned arrow glyphs.
-  // Hero carousel only: 'auto' sizes each slide from its own CSS width
-  // instead of splitting evenly into a fixed count — paired with the
-  // aspect-ratio: 16/9 rule on .ttlr_hero_series-wrap .ttlr_cms_series-item
-  // in sky-ttlr.css, so each card's width is DERIVED from its height
-  // rather than the other way around, keeping it genuinely 16:9 regardless
-  // of viewport width. 'auto' mode naturally shows fewer cards on a
-  // narrower viewport on its own, so no separate tablet breakpoint is
-  // needed here (unlike the fixed-count carousels below).
+  // 'auto' everywhere (2026-09-18, was hero-only before): every card in
+  // this project has its OWN fixed CSS width (Designer-set, not derived
+  // from the container) — slidesPerView as a plain number tells Swiper to
+  // instead compute each slide's width as containerWidth/slidesPerView for
+  // its OWN internal scroll-grid math, which diverges from the real
+  // rendered width whenever the two don't happen to match. Confirmed live
+  // via console: with slidesPerView:3 on a carousel of 340px cards, Swiper's
+  // internal slidesGrid was spaced 526.67px apart (its own computed
+  // containerWidth/3) while the real cards were 340px — a ~1680px
+  // discrepancy across 9 slides, which is exactly what let it scroll past
+  // the real last slide into genuinely empty space; resistanceRatio/
+  // observer above don't touch this, since Swiper's own boundary math
+  // (isEnd/maxTranslate) was internally consistent, just built on the
+  // wrong number. 'auto' makes Swiper measure each slide's actual rendered
+  // width directly instead of assuming a division, eliminating the
+  // mismatch entirely. Also naturally produces the tablet "peek" the old
+  // breakpoints config existed for, without needing to hand-tune it.
   new Swiper(root, {
     // Swaps the cursor to grab/grabbing based on Swiper's own actual drag
     // state (applied to .swiper-wrapper) — more reliable than a CSS :active
@@ -1602,19 +1611,8 @@ function initSeriesSwiper(root) {
     // mutation instead of trusting a one-time measurement.
     observer: true,
     observeParents: true,
-    slidesPerView: isHeroSeries ? 'auto' : 3,
+    slidesPerView: 'auto',
     spaceBetween: 20,
-    // Tablet shows 1.5 slides on the fixed-count carousels (a deliberate
-    // "peek" of the next one) — breakpoint keys match Webflow's own
-    // standard breakpoints (tablet is 768–991px; already visible elsewhere
-    // on this page's own media queries). 992px+ reverts to the base 3-up
-    // desktop view; anything below 768px (mobile) is untouched, still the
-    // base slidesPerView. Not applied to the hero carousel — 'auto' mode
-    // already adapts on its own.
-    breakpoints: isHeroSeries ? undefined : {
-      768: { slidesPerView: 1.5 },
-      992: { slidesPerView: 3 },
-    },
     navigation: (nextEl || prevEl) ? { nextEl, prevEl } : undefined,
   });
 }
