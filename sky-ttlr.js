@@ -1806,15 +1806,15 @@ ttlrReady('bookmarks list', function () {
   const PROGRESS_FIELD = 'ttl-progress';
 
   // Webflow Cloud proxy (2026-09-22) — resolves a batch of real CMS Item
-  // IDs to each episode's CURRENT title/thumbnail/href, so a bookmark
-  // doesn't stay frozen at whatever it looked like the moment it was
-  // saved. The proxy itself does the two-hop lookup (episode -> its linked
-  // Series item -> that series' own slug) to build a correct
-  // /series/{series-slug}?episode={n} href — NOT the episode item's own
-  // slug, which isn't a real navigable page path on its own. month is
-  // still NOT live-resolved (bookmarks now store no month at all going
-  // forward — see normalizeBookmark below); only pre-2026-09-22 snapshot
-  // bookmarks still show one, from whatever was captured at the time.
+  // IDs to each episode's CURRENT title ("S3 EP1: Winning in H2"),
+  // thumbnail, href, and month ("October 2026"), so a bookmark doesn't stay
+  // frozen at whatever it looked like the moment it was saved. The proxy
+  // does two/three-hop lookups server-side: episode -> its linked Series
+  // item -> that series' own slug (for href, NOT the episode item's own
+  // slug, which isn't a real navigable page path by itself) and series
+  // number (for "S{n}"); series -> its linked Months item -> that month's
+  // name + its own Year field (added to the Months collection 2026-09-22
+  // specifically for this).
   const EPISODE_LOOKUP_URL = 'https://timetolearn.csg.sky/api/episode-lookup';
 
   // Bookmarks now come in three possible shapes (see the matching note in
@@ -1866,6 +1866,7 @@ ttlrReady('bookmarks list', function () {
         // the exact staleness this is meant to fix.
         imgSrcset: live.thumbnailUrl ? '' : b.imgSrcset,
         href: live.href || b.href,
+        month: live.month || b.month,
       };
     });
   }
