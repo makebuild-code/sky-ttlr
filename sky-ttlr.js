@@ -1824,6 +1824,78 @@ ttlrReady('bookmarks list', function () {
   const PROGRESS_LOCAL_KEY = 'ttlr-progress-local';
   const PROGRESS_FIELD = 'ttl-progress';
 
+  // Webflow Cloud proxy (2026-09-22) — resolves a batch of real CMS Item
+  // IDs to each episode's CURRENT title/thumbnail, so a bookmark doesn't
+  // stay frozen at whatever it looked like the moment it was saved. Only
+  // title/thumbnail are live-resolved here — href/month aren't, since
+  // reconstructing those correctly would need a second hop through the
+  // episode's linked Series item (which the proxy doesn't do), and
+  // title/image going stale was the actual reported problem.
+  const EPISODE_LOOKUP_URL = 'https://timetolearn.csg.sky/api/episode-lookup';
+
+  async function fetchLiveEpisodeData(bookmarks) {
+    const ids = bookmarks.map((b) => b.cmsItemId).filter(Boolean);
+    if (!ids.length) return new Map();
+    try {
+      const res = await fetch(`${EPISODE_LOOKUP_URL}?ids=${ids.join(',')}`);
+      if (!res.ok) throw new Error(`episode-lookup returned ${res.status}`);
+      const { results } = await res.json();
+      const byId = new Map();
+      (results || []).forEach((r) => byId.set(r.id, r));
+      return byId;
+    } catch (err) {
+      console.error('[ttlr] bookmarks list: failed to resolve live episode data', err);
+      return new Map();
+    }
+  }
+
+  // Bookmarks saved before cmsItemId existed (pre-2026-09-22) have no key to
+  // resolve against here — they just keep rendering from their original
+  // stored snapshot, same as always, until re-bookmarked.
+  function applyLiveData(bookmarks, liveById) {
+    return bookmarks.map((b) => {
+      const live = b.cmsItemId && liveById.get(b.cmsItemId);
+      if (!live || live.deleted) return b;
+      return {
+        ...b,
+        title: live.title || b.title,
+        imgSrc: live.thumbnailUrl || b.imgSrc,
+        // Clear the stored srcset when overriding with a live single URL —
+        // an old srcset left in place can still win at some viewport widths
+        // even after src is updated (same reasoning as render()'s own
+        // imgEl.srcset handling below), which would silently reintroduce
+        // the exact staleness this is meant to fix.
+        imgSrcset: live.thumbnailUrl ? '' : b.imgSrcset,
+      };
+    });
+  }
+
+  // Removes any bookmark whose linked CMS item the proxy reports as
+  // deleted — self-healing instead of accumulating dead bookmarks forever.
+  // Batched into one write rather than reusing removeBookmark() per item,
+  // so pruning multiple dead bookmarks at once doesn't fire multiple
+  // separate Memberstack updates.
+  function pruneDeleted(bookmarks, liveById) {
+    const deletedIds = new Set(
+      bookmarks.filter((b) => b.cmsItemId && liveById.get(b.cmsItemId)?.deleted).map((b) => b.id)
+    );
+    if (!deletedIds.size) return bookmarks;
+
+    const survivors = bookmarks.filter((b) => !deletedIds.has(b.id));
+    window.localStorage.setItem(BOOKMARKS_LOCAL_KEY, JSON.stringify(survivors));
+    waitForMemberstack().then(async (ms) => {
+      if (!ms) return;
+      try {
+        const { data: member } = await ms.getCurrentMember();
+        if (!member) return;
+        await ms.updateMember({ customFields: { [BOOKMARKS_FIELD]: JSON.stringify(survivors) } });
+      } catch (err) {
+        console.error('[ttlr] bookmarks list: failed to sync auto-prune to Memberstack', err);
+      }
+    });
+    return survivors;
+  }
+
   function normalizeBookmark(entry) {
     if (typeof entry === 'string') return { id: entry, title: '', month: '', imgSrc: '', imgSrcset: '', href: '' };
     return entry;
@@ -1970,6 +2042,16 @@ ttlrReady('bookmarks list', function () {
     } catch (err) {
       console.error('[ttlr] bookmarks list: failed to hydrate from Memberstack', err);
     }
+  }).then(async () => {
+    // Runs after the merge above, so this resolves against the fullest
+    // list this session knows about (local + remote), not just whichever
+    // was available first. A no-op if nothing here has cmsItemId yet
+    // (pre-2026-09-22 bookmarks) or the proxy is unreachable.
+    const bookmarks = loadLocalBookmarks();
+    const liveById = await fetchLiveEpisodeData(bookmarks);
+    if (!liveById.size) return;
+    const survivors = pruneDeleted(bookmarks, liveById);
+    render(applyLiveData(survivors, liveById), loadLocalCompletedIds());
   });
 });
 
