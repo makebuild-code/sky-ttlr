@@ -77,6 +77,25 @@ function initEpisodeRouter(listEl) {
     return span ? span.textContent.trim() : null;
   }
 
+  // The real Webflow CMS Item ID for this episode — not bindable as a plain
+  // Designer field, but Webflow auto-embeds it (alongside the collection
+  // ID) in data-wf-cms-context on CMS-bound elements. Confirmed present on
+  // #back-btn/#next-btn inside every .ttlr_episode_cms_item (identical
+  // value on both, since they're Component instances bound to THIS
+  // episode's own item) — searched for generically here so it still works
+  // if Designer ever moves which specific element carries it.
+  function cmsItemIdOf(item) {
+    const contextEl = item.querySelector('[data-wf-cms-context]');
+    if (!contextEl) return null;
+    try {
+      const context = JSON.parse(decodeURIComponent(contextEl.getAttribute('data-wf-cms-context')));
+      return context?.[0]?.itemId || null;
+    } catch (err) {
+      console.error('[ttlr] Failed to parse data-wf-cms-context', err);
+      return null;
+    }
+  }
+
   const warnedMissingEpisodeId = new Set();
   function idOf(item, index) {
     if (item.dataset.episodeId) return item.dataset.episodeId;
@@ -620,6 +639,12 @@ function initEpisodeRouter(listEl) {
 
     return {
       id: idOf(item, index),
+      // Real Webflow CMS Item ID (see cmsItemIdOf above) — stored alongside
+      // the existing snapshot fields, not replacing them yet. Lets a future
+      // live-lookup (Webflow Cloud proxy or otherwise) resolve this
+      // bookmark's CURRENT title/image/etc. by ID instead of trusting this
+      // snapshot forever; null for any bookmark saved before this existed.
+      cmsItemId: cmsItemIdOf(item),
       // "S1 EP3: Getting it right" — falls back to the bare episode name if
       // series/episode numbers aren't available for some reason.
       title: seriesNumber && episodeNumber ? `S${seriesNumber} EP${episodeNumber}: ${episodeName}` : episodeName,
