@@ -583,21 +583,24 @@ function initEpisodeRouter(listEl) {
 
   const BOOKMARKS_LOCAL_KEY = 'ttlr-bookmarks-local';
 
-  // Bookmarks are stored as SNAPSHOT objects, not bare id strings — captured
-  // at the moment of bookmarking from [data-bookmark-thumbnail] (per episode
-  // item: an <img> + a [data-bookmark-number]/data-bookmark-name element)
-  // and data-bookmark-month on <body> (page-level — every episode on a
-  // series page shares the same month) — see bookmarkDataFor below. This is
-  // what the bookmarked-episodes carousel elsewhere on the site (see the
-  // "bookmarks list" section near the end of this file) renders from,
-  // without needing a live lookup against a full episode list. Completion
-  // state is deliberately NOT snapshotted — that's read live from
-  // ttl-progress at render time instead, so it can't go stale.
-  // Old data (a plain array of id strings, from before this change)
-  // normalizes into a stub object so .id lookups keep working — it'll just
-  // render blank until that episode is bookmarked again.
+  // Bookmarks now store ONLY the real Webflow CMS Item ID (2026-09-22) —
+  // no more title/image/month/href snapshot. The bookmarks-list section
+  // (near the end of this file) resolves title/image/slug live via the
+  // Webflow Cloud episode-lookup proxy instead of trusting a snapshot that
+  // could go stale the moment the source content changes.
+  //
+  // Three historical shapes can exist in the same array at once:
+  //   1. NEW (from now on): a bare string, and that string IS the real
+  //      cmsItemId — normalizeBookmark below turns it into { id: cmsItemId }.
+  //   2. TRANSITIONAL (2026-09-22 same-day, briefly): a full snapshot object
+  //      that ALSO carries a separate .cmsItemId field alongside the old
+  //      slug-based .id.
+  //   3. ORIGINAL (pre-2026-09-22): a full snapshot object with only a
+  //      slug-based .id, no cmsItemId at all — predates cmsItemIdOf existing.
+  // isBookmarkForEpisode below matches correctly against all three so nobody's
+  // existing bookmarks silently vanish or duplicate during the transition.
   function normalizeBookmark(entry) {
-    if (typeof entry === 'string') return { id: entry, title: '', month: '', imgSrc: '', imgSrcset: '', href: '' };
+    if (typeof entry === 'string') return { id: entry };
     return entry;
   }
 
@@ -619,44 +622,11 @@ function initEpisodeRouter(listEl) {
     }
   }
 
-  function bookmarkDataFor(item, index) {
-    const thumbWrap = item.querySelector('[data-bookmark-thumbnail]');
-    const imgEl = thumbWrap?.querySelector('img');
-    // data-bookmark-number/data-bookmark-name/data-bookmark-series all live
-    // as ATTRIBUTES on this one element — its own text content is separate
-    // (unused) placeholder text, not what to read.
-    const fieldsEl = thumbWrap?.querySelector('[data-bookmark-number]');
-    const titleH2 = item.querySelector('h2');
-    const number = numberOf(item);
-    const url = new URL(window.location.href);
-    if (number) url.searchParams.set('episode', number);
-
-    const episodeName = fieldsEl?.getAttribute('data-bookmark-name') || (titleH2 ? titleH2.textContent.trim() : '');
-    const seriesNumber = document.body.getAttribute('data-bookmark-series-number') || '';
-    const episodeNumber = fieldsEl?.getAttribute('data-bookmark-number') || number || '';
-    const monthName = document.body.getAttribute('data-bookmark-month') || '';
-    const year = document.body.getAttribute('data-bookmark-year') || '';
-
-    return {
-      id: idOf(item, index),
-      // Real Webflow CMS Item ID (see cmsItemIdOf above) — stored alongside
-      // the existing snapshot fields, not replacing them yet. Lets a future
-      // live-lookup (Webflow Cloud proxy or otherwise) resolve this
-      // bookmark's CURRENT title/image/etc. by ID instead of trusting this
-      // snapshot forever; null for any bookmark saved before this existed.
-      cmsItemId: cmsItemIdOf(item),
-      // "S1 EP3: Getting it right" — falls back to the bare episode name if
-      // series/episode numbers aren't available for some reason.
-      title: seriesNumber && episodeNumber ? `S${seriesNumber} EP${episodeNumber}: ${episodeName}` : episodeName,
-      // "July 2026"
-      month: [monthName, year].filter(Boolean).join(' '),
-      imgSrc: imgEl ? imgEl.src : '',
-      // Webflow images are usually responsive (srcset + sizes) — capture it
-      // too, not just src, so the bookmark card can load the right
-      // resolution per viewport instead of always the largest/default one.
-      imgSrcset: imgEl ? imgEl.srcset : '',
-      href: url.toString(),
-    };
+  // Matches a stored bookmark against "the episode currently on screen",
+  // regardless of which of the three shapes above it happens to be in.
+  function isBookmarkForEpisode(bookmark, cmsItemId, legacyId) {
+    if (cmsItemId && (bookmark.id === cmsItemId || bookmark.cmsItemId === cmsItemId)) return true;
+    return bookmark.id === legacyId;
   }
 
   // Local-first, same pattern as progress above (and the stacked-apps
@@ -692,7 +662,9 @@ function initEpisodeRouter(listEl) {
 
   if (bookmarkBtn) {
     // Instant paint from the local cache — no waiting on Memberstack.
-    setBookmarkVisual(bookmarksCache.some((b) => b.id === idOf(items[currentIndex], currentIndex)));
+    setBookmarkVisual(bookmarksCache.some((b) => isBookmarkForEpisode(
+      b, cmsItemIdOf(items[currentIndex]), idOf(items[currentIndex], currentIndex)
+    )));
 
     // Hydrate from Memberstack in the background and merge (union, by id —
     // local's own copy of a bookmark wins on conflict since it reflects
@@ -713,7 +685,9 @@ function initEpisodeRouter(listEl) {
         const merged = Array.from(byId.values());
         bookmarksCache = merged;
         saveLocalBookmarks(merged);
-        setBookmarkVisual(merged.some((b) => b.id === idOf(items[currentIndex], currentIndex)));
+        setBookmarkVisual(merged.some((b) => isBookmarkForEpisode(
+          b, cmsItemIdOf(items[currentIndex]), idOf(items[currentIndex], currentIndex)
+        )));
       } catch (err) {
         console.error('[ttlr] Failed to read bookmarks from Memberstack', err);
       }
@@ -722,11 +696,18 @@ function initEpisodeRouter(listEl) {
     // Synchronous now — no network wait before the icon updates. The
     // Memberstack write happens afterward, debounced, in the background.
     bookmarkBtn.addEventListener('click', () => {
-      const episodeId = idOf(items[currentIndex], currentIndex);
-      const isBookmarked = bookmarksCache.some((b) => b.id === episodeId);
+      // Computed fresh on every click, not hoisted — items[currentIndex]
+      // changes as the user navigates Prev/Next without a page reload.
+      const currentCmsItemId = cmsItemIdOf(items[currentIndex]);
+      const currentLegacyId = idOf(items[currentIndex], currentIndex);
+      if (!currentCmsItemId) {
+        console.warn('[ttlr] bookmarks: no data-wf-cms-context found on the current episode — bookmarking it falls back to the old slug-based key, which the bookmarks list cannot live-resolve title/image for.');
+      }
+
+      const isBookmarked = bookmarksCache.some((b) => isBookmarkForEpisode(b, currentCmsItemId, currentLegacyId));
       bookmarksCache = isBookmarked
-        ? bookmarksCache.filter((b) => b.id !== episodeId)
-        : [...bookmarksCache, bookmarkDataFor(items[currentIndex], currentIndex)];
+        ? bookmarksCache.filter((b) => !isBookmarkForEpisode(b, currentCmsItemId, currentLegacyId))
+        : [...bookmarksCache, currentCmsItemId || currentLegacyId];
 
       saveLocalBookmarks(bookmarksCache);
       setBookmarkVisual(!isBookmarked);
@@ -780,7 +761,7 @@ function initEpisodeRouter(listEl) {
     }
 
     updateButtonStates(index);
-    setBookmarkVisual(bookmarksCache.some((b) => b.id === idOf(items[index], index)));
+    setBookmarkVisual(bookmarksCache.some((b) => isBookmarkForEpisode(b, cmsItemIdOf(items[index]), idOf(items[index], index))));
   }
 
   function updateButtonStates(index) {
@@ -1825,16 +1806,33 @@ ttlrReady('bookmarks list', function () {
   const PROGRESS_FIELD = 'ttl-progress';
 
   // Webflow Cloud proxy (2026-09-22) — resolves a batch of real CMS Item
-  // IDs to each episode's CURRENT title/thumbnail, so a bookmark doesn't
-  // stay frozen at whatever it looked like the moment it was saved. Only
-  // title/thumbnail are live-resolved here — href/month aren't, since
-  // reconstructing those correctly would need a second hop through the
-  // episode's linked Series item (which the proxy doesn't do), and
-  // title/image going stale was the actual reported problem.
+  // IDs to each episode's CURRENT title/thumbnail/href, so a bookmark
+  // doesn't stay frozen at whatever it looked like the moment it was
+  // saved. The proxy itself does the two-hop lookup (episode -> its linked
+  // Series item -> that series' own slug) to build a correct
+  // /series/{series-slug}?episode={n} href — NOT the episode item's own
+  // slug, which isn't a real navigable page path on its own. month is
+  // still NOT live-resolved (bookmarks now store no month at all going
+  // forward — see normalizeBookmark below); only pre-2026-09-22 snapshot
+  // bookmarks still show one, from whatever was captured at the time.
   const EPISODE_LOOKUP_URL = 'https://timetolearn.csg.sky/api/episode-lookup';
 
+  // Bookmarks now come in three possible shapes (see the matching note in
+  // initEpisodeRouter's own bookmark section): a bare id string (2026-09-22
+  // onward, normalized below into { id }) where .id IS the real cmsItemId;
+  // a transitional snapshot object carrying BOTH the old slug-based .id and
+  // a separate .cmsItemId; or an original pre-2026-09-22 snapshot with only
+  // a slug-based .id and no cmsItemId at all (not live-resolvable — keeps
+  // rendering from its own stored fields until re-bookmarked). Real Webflow
+  // Item IDs are 24-hex-char Mongo-style ids, which a slug/legacy key never
+  // happens to match, making this a safe way to tell the shapes apart.
+  function liveLookupIdOf(bookmark) {
+    if (/^[0-9a-f]{24}$/i.test(bookmark.id)) return bookmark.id;
+    return bookmark.cmsItemId || null;
+  }
+
   async function fetchLiveEpisodeData(bookmarks) {
-    const ids = bookmarks.map((b) => b.cmsItemId).filter(Boolean);
+    const ids = bookmarks.map(liveLookupIdOf).filter(Boolean);
     if (!ids.length) return new Map();
     try {
       const res = await fetch(`${EPISODE_LOOKUP_URL}?ids=${ids.join(',')}`);
@@ -1849,12 +1847,13 @@ ttlrReady('bookmarks list', function () {
     }
   }
 
-  // Bookmarks saved before cmsItemId existed (pre-2026-09-22) have no key to
-  // resolve against here — they just keep rendering from their original
-  // stored snapshot, same as always, until re-bookmarked.
+  // Bookmarks with no resolvable id (pre-2026-09-22, no cmsItemId at all)
+  // have no key to resolve against here — they just keep rendering from
+  // their original stored snapshot, same as always, until re-bookmarked.
   function applyLiveData(bookmarks, liveById) {
     return bookmarks.map((b) => {
-      const live = b.cmsItemId && liveById.get(b.cmsItemId);
+      const lookupId = liveLookupIdOf(b);
+      const live = lookupId && liveById.get(lookupId);
       if (!live || live.deleted) return b;
       return {
         ...b,
@@ -1866,6 +1865,7 @@ ttlrReady('bookmarks list', function () {
         // imgEl.srcset handling below), which would silently reintroduce
         // the exact staleness this is meant to fix.
         imgSrcset: live.thumbnailUrl ? '' : b.imgSrcset,
+        href: live.href || b.href,
       };
     });
   }
@@ -1877,7 +1877,10 @@ ttlrReady('bookmarks list', function () {
   // separate Memberstack updates.
   function pruneDeleted(bookmarks, liveById) {
     const deletedIds = new Set(
-      bookmarks.filter((b) => b.cmsItemId && liveById.get(b.cmsItemId)?.deleted).map((b) => b.id)
+      bookmarks.filter((b) => {
+        const lookupId = liveLookupIdOf(b);
+        return lookupId && liveById.get(lookupId)?.deleted;
+      }).map((b) => b.id)
     );
     if (!deletedIds.size) return bookmarks;
 
@@ -1897,7 +1900,7 @@ ttlrReady('bookmarks list', function () {
   }
 
   function normalizeBookmark(entry) {
-    if (typeof entry === 'string') return { id: entry, title: '', month: '', imgSrc: '', imgSrcset: '', href: '' };
+    if (typeof entry === 'string') return { id: entry };
     return entry;
   }
 
@@ -1969,7 +1972,10 @@ ttlrReady('bookmarks list', function () {
       if (monthEl) monthEl.textContent = bookmark.month || '';
 
       const episodeEl = card.querySelector('[data-bookmark="episode"]');
-      if (episodeEl) episodeEl.textContent = bookmark.title || '';
+      // ID-only bookmarks (2026-09-22 onward) have no title at all until
+      // the live-resolve pass finishes — "Loading…" instead of a blank
+      // card for that brief window, rather than looking broken.
+      if (episodeEl) episodeEl.textContent = bookmark.title || 'Loading…';
 
       const tagWrapEl = card.querySelector('.ttlr_completion_tag-wrap');
       if (tagWrapEl) tagWrapEl.style.display = completedIds.has(bookmark.id) ? '' : 'none';
