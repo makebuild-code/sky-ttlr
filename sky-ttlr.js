@@ -2493,8 +2493,8 @@ ttlrReady('series lock', function () {
   const cards = Array.from(document.querySelectorAll('a.ttlr_series_card-wrap'));
   const listEl = document.querySelector('.ttlr_episode_cms_list');
   const pageSlug = listEl?.closest('[data-series-id]')?.dataset.seriesId || null;
-  const layoutEl = pageSlug ? document.querySelector('.ttlr_episode_section_layout') : null;
-  if (!cards.length && !layoutEl) return;
+  const leftEl = pageSlug ? document.querySelector('.ttlr_episode_section_left') : null;
+  if (!cards.length && !leftEl) return;
 
   function readJson(key) {
     try {
@@ -2534,8 +2534,8 @@ ttlrReady('series lock', function () {
 
   // ---- series page ----
   function getPanel() {
-    let panel = document.querySelector('[data-ttlr-locked-panel]');
-    if (panel || !layoutEl) return panel;
+    let panel = document.querySelector('.ttlr_locked_panel, [data-ttlr-locked-panel]');
+    if (panel || !leftEl) return panel;
     panel = document.createElement('div');
     panel.className = 'ttlr_locked_panel';
     panel.setAttribute('data-ttlr-locked-panel', '');
@@ -2545,20 +2545,21 @@ ttlrReady('series lock', function () {
       '<p>Finish <strong data-ttlr-locked-title></strong> to unlock this series.</p>' +
       '<p data-ttlr-locked-progress></p>' +
       '<a data-ttlr-locked-link class="ttlr_locked_link">Go to previous series</a>';
-    layoutEl.insertAdjacentElement('beforebegin', panel);
+    leftEl.insertAdjacentElement('beforebegin', panel);
     return panel;
   }
 
   function setPageLock(info) {
-    if (!layoutEl) return;
+    if (!leftEl) return;
     const panel = getPanel();
-    layoutEl.style.visibility = '';
-    layoutEl.style.display = info ? 'none' : '';
+    leftEl.style.visibility = '';
+    leftEl.style.display = info ? 'none' : '';
     if (!panel) return;
     if (!info) {
       panel.style.display = 'none';
       return;
     }
+    panel.style.display = '';
     const titleEl = panel.querySelector('[data-ttlr-locked-title]');
     const linkEl = panel.querySelector('[data-ttlr-locked-link]');
     const progressEl = panel.querySelector('[data-ttlr-locked-progress]');
@@ -2568,7 +2569,9 @@ ttlrReady('series lock', function () {
       const p = info.previousProgress;
       progressEl.textContent = p && p.total ? `${p.completedCount || 0}/${p.total} episodes watched` : '';
     }
-    panel.style.display = panel.dataset.ttlrDisplay || 'block';
+    // If the Designer class hides the panel by default, clearing the inline
+    // display above isn't enough — force it visible (data-ttlr-display overrides 'block').
+    if (window.getComputedStyle(panel).display === 'none') panel.style.display = panel.dataset.ttlrDisplay || 'block';
   }
 
   function apply(orderMap, seriesProgress) {
@@ -2576,7 +2579,7 @@ ttlrReady('series lock', function () {
       const slug = card.querySelector('.ttlr_badge[data-series-id]')?.dataset.seriesId || slugFromHref(card.getAttribute('href'));
       setCardLock(card, slug && seriesProgress ? ttlrSeriesLockInfo(slug, orderMap, seriesProgress) : null);
     });
-    if (layoutEl) setPageLock(seriesProgress ? ttlrSeriesLockInfo(pageSlug, orderMap, seriesProgress) : null);
+    if (leftEl) setPageLock(seriesProgress ? ttlrSeriesLockInfo(pageSlug, orderMap, seriesProgress) : null);
   }
 
   async function fetchOrder() {
@@ -2609,21 +2612,21 @@ ttlrReady('series lock', function () {
   // Series page: stay hidden until the lock state is known (or we give up),
   // so a locked series never flashes its episodes and an open one never
   // flashes the locked panel.
-  if (layoutEl) layoutEl.style.visibility = 'hidden';
+  if (leftEl) leftEl.style.visibility = 'hidden';
   const failOpen = window.setTimeout(() => {
-    if (layoutEl) layoutEl.style.visibility = '';
+    if (leftEl) leftEl.style.visibility = '';
   }, PENDING_TIMEOUT_MS);
 
   const localSeries = readJson(PROGRESS_LOCAL_KEY)?.series || null;
   const cachedOrder = readJson(ORDER_CACHE_KEY);
-  if (cachedOrder && localSeries && !layoutEl) apply(toOrderMap(cachedOrder), localSeries);
+  if (cachedOrder && localSeries && !leftEl) apply(toOrderMap(cachedOrder), localSeries);
 
   Promise.all([fetchOrder(), readMemberSeriesProgress()]).then(([freshOrder, remoteSeries]) => {
     window.clearTimeout(failOpen);
     const orderMap = freshOrder || (cachedOrder ? toOrderMap(cachedOrder) : null);
     const seriesProgress = remoteSeries || localSeries;
     if (!orderMap || !seriesProgress) {
-      if (layoutEl) layoutEl.style.visibility = '';
+      if (leftEl) leftEl.style.visibility = '';
       return;
     }
     apply(orderMap, seriesProgress);
