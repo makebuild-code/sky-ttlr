@@ -2450,3 +2450,182 @@ ttlrReady('share link', function () {
     });
   });
 });
+
+/* ---- Sequential series lock: within a month, a series unlocks once the
+   previous series (next-lower series number, same month) is completed. The
+   first series of each month is never locked, nothing carries across months,
+   episodes inside a series are never gated. VISUAL ONLY — the episodes are
+   still in the page source, this just hides them and blocks card clicks.
+
+   Order comes from the Webflow Cloud proxy (/api/series-order, relative so
+   it works on both the live and the webflow.io staging domain); progress
+   comes from the SAME ttl-progress field everything else reads (series[slug]
+   .completed, keyed by the slug in data-series-id). Rules chosen on purpose:
+   - a series that already has any recorded progress is never locked
+     (existing learners keep what they've started/finished);
+   - anything unknown (proxy down, no progress readable, slug not in the
+     order list) FAILS OPEN — never lock a learner out because of an error. ---- */
+
+function ttlrSeriesLockInfo(slug, orderBySlug, seriesProgress) {
+  const entry = orderBySlug.get(slug);
+  if (!entry || !entry.previousSlug) return null;
+  const own = seriesProgress?.[slug];
+  if (own && (own.completed || own.completedCount > 0)) return null;
+  const previousProgress = seriesProgress?.[entry.previousSlug] || null;
+  if (previousProgress?.completed) return null;
+  const previous = orderBySlug.get(entry.previousSlug);
+  return {
+    previousSlug: entry.previousSlug,
+    previousTitle: previous?.title || '',
+    previousHref: '/series/' + entry.previousSlug,
+    previousProgress,
+  };
+}
+
+ttlrReady('series lock', function () {
+  const SERIES_ORDER_URL = '/api/series-order';
+  const ORDER_CACHE_KEY = 'ttlr-series-order';
+  const PROGRESS_FIELD = 'ttl-progress';
+  const PROGRESS_LOCAL_KEY = 'ttlr-progress-local';
+  const PENDING_TIMEOUT_MS = 4000;
+
+  const slugFromHref = (href) => (href || '').match(/\/series\/([^/?#]+)/)?.[1] || null;
+  const cards = Array.from(document.querySelectorAll('a.ttlr_series_card-wrap'));
+  const listEl = document.querySelector('.ttlr_episode_cms_list');
+  const pageSlug = listEl?.closest('[data-series-id]')?.dataset.seriesId || null;
+  const layoutEl = pageSlug ? document.querySelector('.ttlr_episode_section_layout') : null;
+  if (!cards.length && !layoutEl) return;
+
+  function readJson(key) {
+    try {
+      return JSON.parse(window.localStorage.getItem(key));
+    } catch (err) {
+      return null;
+    }
+  }
+  const toOrderMap = (series) => new Map((series || []).map((s) => [s.slug, s]));
+
+  // ---- cards (landing page + Re-Watch) ----
+  document.addEventListener('click', (e) => {
+    const lockedCard = e.target.closest?.('a.ttlr_series_card-wrap.is-locked');
+    if (!lockedCard) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+
+  function setCardLock(card, info) {
+    card.classList.toggle('is-locked', !!info);
+    if (info) {
+      card.setAttribute('aria-disabled', 'true');
+      card.setAttribute('tabindex', '-1');
+      card.dataset.lockedBy = info.previousSlug;
+      card.dataset.ttlrLockTitle = '1';
+      card.title = info.previousTitle ? `Finish "${info.previousTitle}" to unlock this series` : 'Finish the previous series to unlock this series';
+    } else {
+      card.removeAttribute('aria-disabled');
+      card.removeAttribute('tabindex');
+      delete card.dataset.lockedBy;
+      if (card.dataset.ttlrLockTitle) {
+        card.removeAttribute('title');
+        delete card.dataset.ttlrLockTitle;
+      }
+    }
+  }
+
+  // ---- series page ----
+  function getPanel() {
+    let panel = document.querySelector('[data-ttlr-locked-panel]');
+    if (panel || !layoutEl) return panel;
+    panel = document.createElement('div');
+    panel.className = 'ttlr_locked_panel';
+    panel.setAttribute('data-ttlr-locked-panel', '');
+    panel.style.cssText = 'display:none;padding:48px 24px;text-align:center;';
+    panel.innerHTML =
+      '<h2>Locked</h2>' +
+      '<p>Finish <strong data-ttlr-locked-title></strong> to unlock this series.</p>' +
+      '<p data-ttlr-locked-progress></p>' +
+      '<a data-ttlr-locked-link class="ttlr_locked_link">Go to previous series</a>';
+    layoutEl.insertAdjacentElement('beforebegin', panel);
+    return panel;
+  }
+
+  function setPageLock(info) {
+    if (!layoutEl) return;
+    const panel = getPanel();
+    layoutEl.style.visibility = '';
+    layoutEl.style.display = info ? 'none' : '';
+    if (!panel) return;
+    if (!info) {
+      panel.style.display = 'none';
+      return;
+    }
+    const titleEl = panel.querySelector('[data-ttlr-locked-title]');
+    const linkEl = panel.querySelector('[data-ttlr-locked-link]');
+    const progressEl = panel.querySelector('[data-ttlr-locked-progress]');
+    if (titleEl) titleEl.textContent = info.previousTitle || 'the previous series';
+    if (linkEl) linkEl.setAttribute('href', info.previousHref);
+    if (progressEl) {
+      const p = info.previousProgress;
+      progressEl.textContent = p && p.total ? `${p.completedCount || 0}/${p.total} episodes watched` : '';
+    }
+    panel.style.display = panel.dataset.ttlrDisplay || 'block';
+  }
+
+  function apply(orderMap, seriesProgress) {
+    cards.forEach((card) => {
+      const slug = card.querySelector('.ttlr_badge[data-series-id]')?.dataset.seriesId || slugFromHref(card.getAttribute('href'));
+      setCardLock(card, slug && seriesProgress ? ttlrSeriesLockInfo(slug, orderMap, seriesProgress) : null);
+    });
+    if (layoutEl) setPageLock(seriesProgress ? ttlrSeriesLockInfo(pageSlug, orderMap, seriesProgress) : null);
+  }
+
+  async function fetchOrder() {
+    try {
+      const res = await fetch(SERIES_ORDER_URL);
+      if (!res.ok) throw new Error(`series-order returned ${res.status}`);
+      const { series } = await res.json();
+      window.localStorage.setItem(ORDER_CACHE_KEY, JSON.stringify(series));
+      return toOrderMap(series);
+    } catch (err) {
+      console.error('[ttlr] series lock: could not load series order — leaving everything unlocked', err);
+      return null;
+    }
+  }
+
+  async function readMemberSeriesProgress() {
+    const ms = await waitForMemberstack();
+    if (!ms) return null;
+    try {
+      const { data: member } = await ms.getCurrentMember();
+      if (!member) return null;
+      const raw = member.customFields?.[PROGRESS_FIELD];
+      return raw ? JSON.parse(raw).series || {} : {};
+    } catch (err) {
+      console.error('[ttlr] series lock: failed to read member progress', err);
+      return null;
+    }
+  }
+
+  // Series page: stay hidden until the lock state is known (or we give up),
+  // so a locked series never flashes its episodes and an open one never
+  // flashes the locked panel.
+  if (layoutEl) layoutEl.style.visibility = 'hidden';
+  const failOpen = window.setTimeout(() => {
+    if (layoutEl) layoutEl.style.visibility = '';
+  }, PENDING_TIMEOUT_MS);
+
+  const localSeries = readJson(PROGRESS_LOCAL_KEY)?.series || null;
+  const cachedOrder = readJson(ORDER_CACHE_KEY);
+  if (cachedOrder && localSeries && !layoutEl) apply(toOrderMap(cachedOrder), localSeries);
+
+  Promise.all([fetchOrder(), readMemberSeriesProgress()]).then(([freshOrder, remoteSeries]) => {
+    window.clearTimeout(failOpen);
+    const orderMap = freshOrder || (cachedOrder ? toOrderMap(cachedOrder) : null);
+    const seriesProgress = remoteSeries || localSeries;
+    if (!orderMap || !seriesProgress) {
+      if (layoutEl) layoutEl.style.visibility = '';
+      return;
+    }
+    apply(orderMap, seriesProgress);
+  });
+});
