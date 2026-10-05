@@ -2553,7 +2553,18 @@ ttlrReady('series lock', function () {
     if (!leftEl) return;
     const panel = getPanel();
     leftEl.style.visibility = '';
-    leftEl.style.display = info ? 'none' : '';
+    // The panel may live INSIDE .ttlr_episode_section_left (it does in the
+    // Designer build), so hide left's other direct children instead of left itself.
+    Array.from(leftEl.children).forEach((child) => {
+      if (child === panel || (panel && child.contains(panel))) return;
+      if (info) {
+        child.dataset.ttlrLockHidden = '1';
+        child.style.display = 'none';
+      } else if (child.dataset.ttlrLockHidden) {
+        child.style.display = '';
+        delete child.dataset.ttlrLockHidden;
+      }
+    });
     if (!panel) return;
     if (!info) {
       panel.style.display = 'none';
