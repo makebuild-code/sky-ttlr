@@ -2777,8 +2777,24 @@ ttlrReady('series lock', function () {
     settle();
   });
 
+  // First visit on this origin has no local progress, so the lock has to wait
+  // for Memberstack once. Save what it returns (additively) so every later
+  // load can paint instantly from the local cache.
+  function persistSeriesProgress(remote) {
+    try {
+      const stored = readJson(PROGRESS_LOCAL_KEY) || {};
+      window.localStorage.setItem(
+        PROGRESS_LOCAL_KEY,
+        JSON.stringify({ ...stored, episodes: stored.episodes || {}, series: ttlrMergeSeriesProgress(stored.series || null, remote) })
+      );
+    } catch (err) {
+      console.error('[ttlr] series lock: could not cache progress locally', err);
+    }
+  }
+
   readMemberSeriesProgress().then((remote) => {
     remoteSeries = remote;
+    if (remote) persistSeriesProgress(remote);
     settle();
   });
 });
