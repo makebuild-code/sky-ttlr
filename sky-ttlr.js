@@ -2482,6 +2482,28 @@ function ttlrSeriesLockInfo(slug, orderBySlug, seriesProgress) {
   };
 }
 
+// Progress is saved to Memberstack on a debounce, so right after finishing a
+// series the remote copy can lag behind localStorage. For lock decisions take
+// whichever of the two says more is done.
+function ttlrMergeSeriesProgress(local, remote) {
+  if (!local) return remote || null;
+  if (!remote) return local;
+  const merged = { ...remote };
+  Object.keys(local).forEach((slug) => {
+    const l = local[slug];
+    const r = merged[slug];
+    merged[slug] = r
+      ? {
+          ...r,
+          completed: !!(r.completed || l.completed),
+          completedCount: Math.max(r.completedCount || 0, l.completedCount || 0),
+          total: r.total || l.total,
+        }
+      : l;
+  });
+  return merged;
+}
+
 ttlrReady('series lock', function () {
   const SERIES_ORDER_URL = '/api/series-order';
   const ORDER_CACHE_KEY = 'ttlr-series-order';
@@ -2623,7 +2645,13 @@ ttlrReady('series lock', function () {
   // Series page: stay hidden until the lock state is known (or we give up),
   // so a locked series never flashes its episodes and an open one never
   // flashes the locked panel.
-  if (leftEl) leftEl.style.visibility = 'hidden';
+  if (leftEl) {
+    leftEl.style.visibility = 'hidden';
+    // The Designer panel is visible by default; hide it up front so any
+    // fail-open path (no member, proxy down, timeout) never leaves it showing.
+    const initialPanel = getPanel();
+    if (initialPanel) initialPanel.style.display = 'none';
+  }
   const failOpen = window.setTimeout(() => {
     if (leftEl) leftEl.style.visibility = '';
   }, PENDING_TIMEOUT_MS);
@@ -2635,7 +2663,7 @@ ttlrReady('series lock', function () {
   Promise.all([fetchOrder(), readMemberSeriesProgress()]).then(([freshOrder, remoteSeries]) => {
     window.clearTimeout(failOpen);
     const orderMap = freshOrder || (cachedOrder ? toOrderMap(cachedOrder) : null);
-    const seriesProgress = remoteSeries || localSeries;
+    const seriesProgress = ttlrMergeSeriesProgress(localSeries, remoteSeries);
     if (!orderMap || !seriesProgress) {
       if (leftEl) leftEl.style.visibility = '';
       return;
