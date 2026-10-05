@@ -725,11 +725,11 @@ function initEpisodeRouter(listEl) {
   // finished series can be re-watched in any order). Needs the Designer's
   // .ttlr_locked_episode_panel on the page — without it there's no screen to
   // show, so nothing is locked (fails open). Hooks inside the panel (all
-  // optional): [data-ttlr-locked-title] "Episode 2: Name",
+  // optional): [data-ttlr-locked-title] "Episode 3: Name" (the first episode still to complete),
   // [data-ttlr-locked-current] "Episode 3", [data-ttlr-locked-link].
   const episodePanelEl = document.querySelector('.ttlr_locked_episode_panel');
   const episodeWrapEl = listEl.closest('.ttlr_episode_cms_wrap') || listEl.parentElement;
-  let lockedEpisodePreviousIndex = null;
+  let lockedEpisodeTargetIndex = null;
 
   function episodeLockInfo(index) {
     if (index <= 0) return null;
@@ -737,13 +737,18 @@ function initEpisodeRouter(listEl) {
     if (episodes[idOf(items[index], index)]?.completed) return null;
     if (episodes[idOf(items[index - 1], index - 1)]?.completed) return null;
     if (seriesId && progressCache.series?.[seriesId]?.completed) return null;
-    const previousItem = items[index - 1];
-    const previousNumber = numberOf(previousItem);
-    const previousName = previousItem.querySelector('.ttlr_episode_col_left h2')?.textContent.trim() || '';
+    // Send them to the FIRST episode they haven't completed (not just the
+    // one before this), e.g. seen 1-2 and opening 10 -> episode 3. Every
+    // episode before it is completed, so the target itself is never locked.
+    let targetIndex = items.findIndex((item, i) => !episodes[idOf(item, i)]?.completed);
+    if (targetIndex === -1 || targetIndex >= index) targetIndex = index - 1;
+    const targetItem = items[targetIndex];
+    const targetNumber = numberOf(targetItem);
+    const targetName = targetItem.querySelector('.ttlr_episode_col_left h2')?.textContent.trim() || '';
     return {
-      previousIndex: index - 1,
-      previousNumber,
-      previousLabel: `Episode ${previousNumber || index}${previousName ? `: ${previousName}` : ''}`,
+      targetIndex,
+      targetNumber,
+      targetLabel: `Episode ${targetNumber || targetIndex + 1}${targetName ? `: ${targetName}` : ''}`,
       currentLabel: `Episode ${numberOf(items[index]) || index + 1}`,
     };
   }
@@ -751,7 +756,7 @@ function initEpisodeRouter(listEl) {
   function applyEpisodeLock(index) {
     if (!episodePanelEl) return;
     const info = episodeLockInfo(index);
-    lockedEpisodePreviousIndex = info ? info.previousIndex : null;
+    lockedEpisodeTargetIndex = info ? info.targetIndex : null;
     if (episodeWrapEl) episodeWrapEl.style.display = info ? 'none' : '';
     if (!info) {
       episodePanelEl.style.display = 'none';
@@ -760,11 +765,11 @@ function initEpisodeRouter(listEl) {
     const titleEl = episodePanelEl.querySelector('[data-ttlr-locked-title]');
     const currentEl = episodePanelEl.querySelector('[data-ttlr-locked-current]');
     const linkEl = episodePanelEl.querySelector('[data-ttlr-locked-link]');
-    if (titleEl) titleEl.textContent = info.previousLabel;
+    if (titleEl) titleEl.textContent = info.targetLabel;
     if (currentEl) currentEl.textContent = info.currentLabel;
     if (linkEl) {
       const url = new URL(window.location.href);
-      if (info.previousNumber) url.searchParams.set('episode', info.previousNumber);
+      if (info.targetNumber) url.searchParams.set('episode', info.targetNumber);
       linkEl.setAttribute('href', url.pathname + url.search);
     }
     episodePanelEl.style.display = '';
@@ -776,9 +781,9 @@ function initEpisodeRouter(listEl) {
   }
 
   episodePanelEl?.querySelector('[data-ttlr-locked-link]')?.addEventListener('click', (e) => {
-    if (lockedEpisodePreviousIndex === null) return;
+    if (lockedEpisodeTargetIndex === null) return;
     e.preventDefault();
-    goTo(lockedEpisodePreviousIndex);
+    goTo(lockedEpisodeTargetIndex);
   });
 
   // ---- Show exactly one item; sync the URL; update button states ----
