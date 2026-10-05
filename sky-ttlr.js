@@ -2571,22 +2571,36 @@ ttlrReady('series lock', function () {
     return panel;
   }
 
+  function setLeftHidden(container, panel, hide) {
+    Array.from(container.children).forEach((child) => {
+      if (child === panel) return;
+      if (panel && child.contains(panel)) {
+        setLeftHidden(child, panel, hide);
+        return;
+      }
+      if (hide) {
+        if (!('ttlrLockHidden' in child.dataset)) {
+          child.dataset.ttlrLockHidden = child.style.getPropertyValue('display');
+        }
+        child.style.setProperty('display', 'none', 'important');
+      } else if ('ttlrLockHidden' in child.dataset) {
+        const previous = child.dataset.ttlrLockHidden;
+        if (previous) child.style.setProperty('display', previous);
+        else child.style.removeProperty('display');
+        delete child.dataset.ttlrLockHidden;
+      }
+    });
+  }
+
   function setPageLock(info) {
     if (!leftEl) return;
     const panel = getPanel();
     leftEl.style.visibility = '';
-    // The panel may live INSIDE .ttlr_episode_section_left (it does in the
-    // Designer build), so hide left's other direct children instead of left itself.
-    Array.from(leftEl.children).forEach((child) => {
-      if (child === panel || (panel && child.contains(panel))) return;
-      if (info) {
-        child.dataset.ttlrLockHidden = '1';
-        child.style.display = 'none';
-      } else if (child.dataset.ttlrLockHidden) {
-        child.style.display = '';
-        delete child.dataset.ttlrLockHidden;
-      }
-    });
+    // Hide EVERYTHING inside .ttlr_episode_section_left except the locked
+    // panel (and the panel's own ancestors, which are descended into). Uses
+    // !important because some of these elements have stylesheet display rules
+    // marked !important (e.g. .ttlr_completed_episode_wrap.is-active).
+    setLeftHidden(leftEl, panel, !!info);
     if (!panel) return;
     if (!info) {
       panel.style.display = 'none';
