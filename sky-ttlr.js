@@ -412,6 +412,7 @@ function initEpisodeRouter(listEl) {
       };
       progressCache = merged;
       saveLocalProgress(merged);
+      applyEpisodeLock(currentIndex);
     } catch (err) {
       console.error('[ttlr] Failed to read progress for progress bar', err);
     }
@@ -716,6 +717,70 @@ function initEpisodeRouter(listEl) {
     });
   }
 
+  // ---- Sequential episodes: within a series every episode must be completed
+  // in order. Independent of the series lock and of the "Unlock Series" CMS
+  // switch — applies to every series. Visual only, same as the series lock.
+  // Episode N is locked unless: it is the first episode, it (or the one
+  // before it) is already completed, or the whole series is completed (so a
+  // finished series can be re-watched in any order). Needs the Designer's
+  // .ttlr_locked_episode_panel on the page — without it there's no screen to
+  // show, so nothing is locked (fails open). Hooks inside the panel (all
+  // optional): [data-ttlr-locked-title] "Episode 2: Name",
+  // [data-ttlr-locked-current] "Episode 3", [data-ttlr-locked-link].
+  const episodePanelEl = document.querySelector('.ttlr_locked_episode_panel');
+  const episodeWrapEl = listEl.closest('.ttlr_episode_cms_wrap') || listEl.parentElement;
+  let lockedEpisodePreviousIndex = null;
+
+  function episodeLockInfo(index) {
+    if (index <= 0) return null;
+    const episodes = progressCache.episodes || {};
+    if (episodes[idOf(items[index], index)]?.completed) return null;
+    if (episodes[idOf(items[index - 1], index - 1)]?.completed) return null;
+    if (seriesId && progressCache.series?.[seriesId]?.completed) return null;
+    const previousItem = items[index - 1];
+    const previousNumber = numberOf(previousItem);
+    const previousName = previousItem.querySelector('.ttlr_episode_col_left h2')?.textContent.trim() || '';
+    return {
+      previousIndex: index - 1,
+      previousNumber,
+      previousLabel: `Episode ${previousNumber || index}${previousName ? `: ${previousName}` : ''}`,
+      currentLabel: `Episode ${numberOf(items[index]) || index + 1}`,
+    };
+  }
+
+  function applyEpisodeLock(index) {
+    if (!episodePanelEl) return;
+    const info = episodeLockInfo(index);
+    lockedEpisodePreviousIndex = info ? info.previousIndex : null;
+    if (episodeWrapEl) episodeWrapEl.style.display = info ? 'none' : '';
+    if (!info) {
+      episodePanelEl.style.display = 'none';
+      return;
+    }
+    const titleEl = episodePanelEl.querySelector('[data-ttlr-locked-title]');
+    const currentEl = episodePanelEl.querySelector('[data-ttlr-locked-current]');
+    const linkEl = episodePanelEl.querySelector('[data-ttlr-locked-link]');
+    if (titleEl) titleEl.textContent = info.previousLabel;
+    if (currentEl) currentEl.textContent = info.currentLabel;
+    if (linkEl) {
+      const url = new URL(window.location.href);
+      if (info.previousNumber) url.searchParams.set('episode', info.previousNumber);
+      linkEl.setAttribute('href', url.pathname + url.search);
+    }
+    episodePanelEl.style.display = '';
+    // If the Designer class hides the panel by default, clearing the inline
+    // display above isn't enough — force it visible (data-ttlr-display overrides 'block').
+    if (window.getComputedStyle(episodePanelEl).display === 'none') {
+      episodePanelEl.style.display = episodePanelEl.dataset.ttlrDisplay || 'block';
+    }
+  }
+
+  episodePanelEl?.querySelector('[data-ttlr-locked-link]')?.addEventListener('click', (e) => {
+    if (lockedEpisodePreviousIndex === null) return;
+    e.preventDefault();
+    goTo(lockedEpisodePreviousIndex);
+  });
+
   // ---- Show exactly one item; sync the URL; update button states ----
   const EPISODE_TRANSITION_MS = 400; // keep in sync with the CSS transition duration on .ttlr_episode_cms_item
 
@@ -724,6 +789,7 @@ function initEpisodeRouter(listEl) {
     const incomingItem = items[index];
     currentIndex = index;
     updateProgressDisplay();
+    applyEpisodeLock(index);
 
     if (!outgoingItem || outgoingItem === incomingItem) {
       // First paint (or somehow re-showing the same item): instant, no fade.
