@@ -70,6 +70,8 @@ function initEpisodeRouter(listEl) {
   }
 
   let currentIndex = 0;
+  let hasExplicitEpisode = false; // ?episode= was in the URL
+  let userHasNavigated = false; // Prev/Next/panel link used — never auto-move them after that
   let hasShownOnce = false; // first show() is an instant cut, not a crossfade — nothing to fade from yet
 
   function numberOf(item) {
@@ -412,6 +414,12 @@ function initEpisodeRouter(listEl) {
       };
       progressCache = merged;
       saveLocalProgress(merged);
+      // Progress from another device/session may change where "resume" is —
+      // only if they were auto-placed and haven't touched navigation yet.
+      if (!hasExplicitEpisode && !userHasNavigated) {
+        const resumeIndex = firstIncompleteIndex();
+        if (resumeIndex !== currentIndex) show(resumeIndex, { replaceUrl: true });
+      }
       applyEpisodeLock(currentIndex);
     } catch (err) {
       console.error('[ttlr] Failed to read progress for progress bar', err);
@@ -789,7 +797,7 @@ function initEpisodeRouter(listEl) {
   // ---- Show exactly one item; sync the URL; update button states ----
   const EPISODE_TRANSITION_MS = 400; // keep in sync with the CSS transition duration on .ttlr_episode_cms_item
 
-  function show(index) {
+  function show(index, options) {
     const outgoingItem = hasShownOnce ? items[currentIndex] : null;
     const incomingItem = items[index];
     currentIndex = index;
@@ -828,7 +836,8 @@ function initEpisodeRouter(listEl) {
     if (number) {
       const url = new URL(window.location.href);
       url.searchParams.set('episode', number);
-      history.pushState({ episodeIndex: index }, '', url);
+      if (options?.replaceUrl) history.replaceState({ episodeIndex: index }, '', url);
+      else history.pushState({ episodeIndex: index }, '', url);
     }
 
     updateButtonStates(index);
@@ -890,6 +899,7 @@ function initEpisodeRouter(listEl) {
   // as complete (only actively clicking Next on it does that, below).
   function goTo(targetIndex) {
     if (targetIndex < 0 || targetIndex >= items.length) return;
+    userHasNavigated = true;
     show(targetIndex);
   }
 
@@ -919,8 +929,20 @@ function initEpisodeRouter(listEl) {
   let startIndex = 0;
   if (requestedNumber) {
     const match = items.findIndex((item) => numberOf(item) === requestedNumber);
-    if (match !== -1) startIndex = match;
+    if (match !== -1) {
+      startIndex = match;
+      hasExplicitEpisode = true;
+    }
   }
+  // No (valid) ?episode= -> resume where they left off: the first episode
+  // not yet completed. A fully completed series (or none started) opens on
+  // episode 1. That episode is never locked, since everything before it is done.
+  function firstIncompleteIndex() {
+    const episodes = progressCache.episodes || {};
+    const i = items.findIndex((item, idx) => !episodes[idOf(item, idx)]?.completed);
+    return i === -1 ? 0 : i;
+  }
+  if (!hasExplicitEpisode) startIndex = firstIncompleteIndex();
   show(startIndex);
 }
 
