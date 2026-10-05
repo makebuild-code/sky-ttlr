@@ -2576,6 +2576,7 @@ ttlrReady('series lock', function () {
   const PROGRESS_FIELD = 'ttl-progress';
   const PROGRESS_LOCAL_KEY = 'ttlr-progress-local';
   const PENDING_TIMEOUT_MS = 4000;
+  const MEMBERSTACK_WAIT_MS = 2500;
 
   const slugFromHref = (href) => (href || '').match(/\/series\/([^/?#]+)/)?.[1] || null;
   const cards = Array.from(document.querySelectorAll('a.ttlr_series_card-wrap'));
@@ -2709,7 +2710,7 @@ ttlrReady('series lock', function () {
   }
 
   async function readMemberSeriesProgress() {
-    const ms = await waitForMemberstack();
+    const ms = await waitForMemberstack(MEMBERSTACK_WAIT_MS);
     if (!ms) return null;
     try {
       const { data: member } = await ms.getCurrentMember();
@@ -2736,18 +2737,48 @@ ttlrReady('series lock', function () {
     if (leftEl) leftEl.style.visibility = '';
   }, PENDING_TIMEOUT_MS);
 
+  // Paint as soon as there's enough to decide, then refine as the rest
+  // arrives — never wait on the slowest source. A returning visitor has the
+  // order list and local progress cached, so the first paint is instant;
+  // the API call and Memberstack then only correct it if they disagree.
   const localSeries = readJson(PROGRESS_LOCAL_KEY)?.series || null;
   const cachedOrder = readJson(ORDER_CACHE_KEY);
-  if (cachedOrder && localSeries && !leftEl) apply(toOrderMap(cachedOrder), localSeries);
+  let orderMap = cachedOrder ? toOrderMap(cachedOrder) : null;
+  let remoteSeries = null;
+  let renderCount = 0;
+  let pending = 2; // order fetch + Memberstack read
 
-  Promise.all([fetchOrder(), readMemberSeriesProgress()]).then(([freshOrder, remoteSeries]) => {
-    window.clearTimeout(failOpen);
-    const orderMap = freshOrder || (cachedOrder ? toOrderMap(cachedOrder) : null);
+  function render() {
     const seriesProgress = ttlrMergeSeriesProgress(localSeries, remoteSeries);
-    if (!orderMap || !seriesProgress) {
-      if (leftEl) leftEl.style.visibility = '';
-      return;
-    }
+    if (!orderMap || !seriesProgress) return false;
+    window.clearTimeout(failOpen);
     apply(orderMap, seriesProgress);
+    renderCount += 1;
+    try {
+      performance.mark('ttlr-series-lock-render-' + renderCount);
+    } catch (err) {
+      /* marks are diagnostics only */
+    }
+    return true;
+  }
+
+  function settle() {
+    pending -= 1;
+    if (!render() && pending <= 0 && leftEl) {
+      window.clearTimeout(failOpen);
+      leftEl.style.visibility = '';
+    }
+  }
+
+  render();
+
+  fetchOrder().then((freshOrder) => {
+    if (freshOrder) orderMap = freshOrder;
+    settle();
+  });
+
+  readMemberSeriesProgress().then((remote) => {
+    remoteSeries = remote;
+    settle();
   });
 });
